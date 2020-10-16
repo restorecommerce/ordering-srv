@@ -1,0 +1,15 @@
+// INDEX
+* xref:index.adoc[Ordering Service]
+
+// FEATURES
+* xref:index.adoc#features[Features]
+
+// API
+* xref:index.adoc#API[API]
+** xref:index.adoc#api_order[Order]
+** xref:index.adoc#api_order_crud[CRUD Operations]
+
+// EVENTS
+* xref:index.adoc#events[Events]
+** xref:index.adoc#emitted-events[Emitted]
+** xref:index.adoc#consumed-events[Consumed]

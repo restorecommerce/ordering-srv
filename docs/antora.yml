@@ -1,0 +1,5 @@
+name: ordering-srv
+title: Ordering Service
+version: master
+nav:
+  - modules/ROOT/nav.adoc

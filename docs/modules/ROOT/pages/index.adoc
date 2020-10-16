@@ -1,0 +1,95 @@
+= Ordering Service
+
+https://travis-ci.org/restorecommerce/ordering-srv?branch=master[image:https://img.shields.io/travis/restorecommerce/ordering-srv/master.svg?style=flat-square[Build Status]]
+https://david-dm.org/restorecommerce/ordering-srv[image:https://img.shields.io/david/restorecommerce/ordering-srv.svg?style=flat-square[Dependencies]]
+https://coveralls.io/github/restorecommerce/ordering-srv?branch=master[image:https://img.shields.io/coveralls/restorecommerce/ordering-srv/master.svg?style=flat-square[Coverage Status]]
+
+A microservice for order management.
+
+[#features]
+== Features
+
+* Management of orders through the `Order` resource.
+
+[#API]
+== API
+
+This microservice exposes the following gRPC endpoints:
+
+[#api_order]
+=== Order
+
+A Order resource.
+
+`io.restorecommerce.order.Order`
+
+|===
+|Field |Type |Label |Description
+
+|id |string |required |Order ID, unique, key
+|meta |https://github.com/restorecommerce/protos/blob/master/io/restorecommerce/meta.proto[`io.restorecommerce.meta.Meta`] |required |Meta info
+|name |string |required |Name
+|description |string |optional |description
+|===
+
+A list of Order resources:
+
+`io.restorecommerce.order.OrderList`
+
+|===
+|Field |Type |Label |Description
+
+|items |[ ]`io.restorecommerce.order.Order` |required |List of Orders
+|total_count |number |optional |number of Orders
+|===
+
+[#api_order_crud]
+==== CRUD Operations
+
+The microservice exposes the below CRUD operations for creating or modifying Order and Role resources.
+
+`io.restorecommerce.order.Service`
+
+|===
+|Method Name |Request Type |Response Type |Description
+
+|Create |`io.restorecommerce.order.OrderList` |`io.restorecommerce.order.OrderList` |Create a list of Order resources
+|Read |`io.restorecommerce.resourcebase.ReadRequest` |`io.restorecommerce.order.OrderList` |Read a list of Order resources
+|Update |`io.restorecommerce.order.OrderList` |`io.restorecommerce.order.OrderList` |Update a list of Order resources
+|Delete |`io.restorecommerce.resourcebase.DeleteRequest` |Empty |Delete a list of Order resources
+|Upsert |`io.restorecommerce.order.OrderList` |`io.restorecommerce.order.OrderList` |Create or Update a list of Order resources
+|===
+
+For the detailed protobuf message structure of
+`io.restorecommerce.resourcebase.ReadRequest` and `io.restorecommerce.resourcebase.DeleteRequest`
+refer https://github.com/restorecommerce/resource-base-interface[resource-base-interface].
+
+[#events]
+== Events
+
+[#emitted-events]
+=== Emitted
+
+List of events emitted by this microservice for below topics:
+
+[width="100%",cols="31%,33%,36%",options="header",]
+|=====================================================================================
+|Topic Name |Event Name |Description
+|`io.restorecommerce.orders.resource` |`orderCreated` |order created
+| |`orderModified` |order modified
+| |`orderDeleted` |order deleted
+|=====================================================================================
+
+[#consumed-events]
+=== Consumed
+
+This microservice consumes messages for the following events by topic:
+
+[width="100%",cols="31%,33%,36%",options="header",]
+|=====================================================================================
+|Topic Name |Event Name |Description
+|`io.restorecommerce.command` |`restoreCommand` |for triggering for system restore
+| |`resetCommand` |for triggering system reset
+| |`healthCheckCommand` |to get system health check
+| |`versionCommand` |to get system version
+|=====================================================================================
