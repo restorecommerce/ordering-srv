@@ -38,7 +38,7 @@
       "provider": "kafka",
       "groupId": "ordering-srv",
       "clientId": "ordering-srv",
-      "kafkaHost": "localhost:9092",
+      "kafkaHost": "localhost:29092",
       "latestOffset": false,
       "orderCreated": {
         "protos": [
