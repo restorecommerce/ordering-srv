@@ -54,6 +54,7 @@
     "createtopics": "node setupTopics.js io.restorecommerce.orders.resource io.restorecommerce.command",
     "createtopics:test": "npm run createtopics && node setupTopics.js io.restorecommerce.fulfillment.resource",
     "dev": "cross-env NODE_ENV=development npm run createtopics && nodemon --watch './src/**/*.ts' --exec 'ts-node' ./src/start.ts",
+    "lcov-report": "nyc report --reporter=lcov",
     "lint": "eslint src --ext .ts",
     "mocha": "cross-env NODE_ENV=test mocha -r ts-node/register -R spec ./test/*.ts --full-trace --exit",
     "pretest": "npm run tsctests && npm run createtopics:test",
