@@ -8,7 +8,7 @@
     "allowSyntheticDefaultImports": true,
     "alwaysStrict": true,
     "noUnusedLocals": false,
-    "skipLibCheck": false,
+    "skipLibCheck": true,
     "outDir": "lib",
     "typeRoots": [
       "node_modules/@types"
