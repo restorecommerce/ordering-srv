@@ -1,12 +1,13 @@
 import { createServiceConfig } from '@restorecommerce/service-config';
 import * as _ from 'lodash';
 import { Events } from '@restorecommerce/kafka-client';
-import { Logger, createLogger } from '@restorecommerce/logger';
+import { createLogger } from '@restorecommerce/logger';
 import * as chassis from '@restorecommerce/chassis-srv';
 import { OrderingService } from './service';
 import { OrderingCommandInterface } from './commandInterface';
 import { RedisClient, createClient } from 'redis';
 import { Arango } from '@restorecommerce/chassis-srv/lib/database/provider/arango/base';
+import { Logger } from 'winston';
 
 export class Worker {
   events: Events;
