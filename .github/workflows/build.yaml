@@ -34,11 +34,6 @@ jobs:
 
       - name: Setup System
         uses: restorecommerce/setup-system-action@v1
-        with:
-          backing-only: false
-          import: true
-          shutdown: |
-            ordering
 
       - name: Install Dependencies
         run: npm ci
