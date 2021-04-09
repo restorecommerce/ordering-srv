@@ -11,5 +11,7 @@ coverage/
 *.log
 *~
 
-!.eslintrc.js
+buildImage.bash
+Dockerfile
+.dockerignore
 lib/
