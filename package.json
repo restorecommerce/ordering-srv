@@ -24,7 +24,7 @@
     "@restorecommerce/logger": "^0.6.4",
     "@restorecommerce/protos": "^0.0.22",
     "@restorecommerce/resource-base-interface": "^0.0.8",
-    "@restorecommerce/service-config": "^0.4.1",
+    "@restorecommerce/service-config": "^0.4.26",
     "lodash": "^4.17.21",
     "redis": "^3.0.2"
   },
