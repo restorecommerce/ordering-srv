@@ -19,73 +19,37 @@
   },
   "events": {
     "kafka": {
-      "kafkaHost": "kafka:9092"
+      "kafka": {
+        "brokers": [
+          "kafka:9092"
+        ]
+      }
     }
   },
   "client": {
-    "fulfillment-srv": {
-      "publisher": {
-        "name": "static",
-        "instances": [
-          "grpc://fulfillment-srv:50067"
-        ]
-      }
+    "product": {
+      "address": "catalog-srv:50051"
     },
-    "catalog-product-srv": {
-      "publisher": {
-        "name": "static",
-        "instances": [
-          "grpc://catalog-srv:50068"
-        ]
-      }
+    "fulfillment": {
+      "address": "fulfillment-srv:50051"
     },
-    "organization-srv": {
-      "publisher": {
-        "name": "static",
-        "instances": [
-          "grpc://resource-srv:50053"
-        ]
-      }
+    "organization": {
+      "address": "resource-srv:50051"
     },
-    "contact-point-type-srv": {
-      "publisher": {
-        "name": "static",
-        "instances": [
-          "grpc://resource-srv:50053"
-        ]
-      }
+    "contact-point-type": {
+      "address": "resource-srv:50051"
     },
-    "contact-point-srv": {
-      "publisher": {
-        "name": "static",
-        "instances": [
-          "grpc://resource-srv:50053"
-        ]
-      }
+    "contact-point": {
+      "address": "resource-srv:50051"
     },
-    "address-srv": {
-      "publisher": {
-        "name": "static",
-        "instances": [
-          "grpc://resource-srv:50053"
-        ]
-      }
+    "address": {
+      "address": "resource-srv:50051"
     },
     "country-srv": {
-      "publisher": {
-        "name": "static",
-        "instances": [
-          "grpc://resource-srv:50053"
-        ]
-      }
+      "address": "resource-srv:50051"
     },
     "graph-srv": {
-      "publisher": {
-        "name": "static",
-        "instances": [
-          "grpc://resource-srv:50053"
-        ]
-      }
+      "address": "resource-srv:50051"
     }
   },
   "server": {
