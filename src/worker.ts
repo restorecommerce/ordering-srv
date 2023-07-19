@@ -10,7 +10,7 @@ import {
   Topic,
   registerProtoMeta
 } from '@restorecommerce/kafka-client';
-import { 
+import {
   FulfillmentRequestList,
   OrderIdList,
   OrderList,
@@ -18,7 +18,7 @@ import {
   OrderState,
   protoMetadata as OrderMeta,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order';
-import { 
+import {
   CommandInterfaceServiceDefinition,
   protoMetadata as CommandInterfaceMeta,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/commandinterface';
@@ -137,7 +137,9 @@ export class Worker {
     this.redisClient = createClient(redisConfig);
 
     const that = this;
+
     const serviceActions = {
+      /* eslint-disable @typescript-eslint/no-use-before-define */
       [CREATE_ORDERS]: (msg: OrderList, context: any, config: any, eventName: string) => {
         return orderService.create(msg, context).then(
           () => that.logger.info(`Event ${eventName} done.`),

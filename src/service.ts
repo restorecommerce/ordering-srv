@@ -109,19 +109,19 @@ export type ProductNature = PhysicalProduct & VirtualProduct;
 export type ProductVariant = PhysicalVariant & VirtualVariant;
 export type RatioedTax = Tax & {
   tax_ratio?: number;
-}
+};
 
 export type CRUDClient = Client<ProductServiceDefinition>
-  | Client<TaxServiceDefinition>
-  | Client<CustomerServiceDefinition>
-  | Client<ShopServiceDefinition>
-  | Client<OrganizationServiceDefinition>
-  | Client<ContactPointServiceDefinition>
-  | Client<AddressServiceDefinition>
-  | Client<CountryServiceDefinition>
-  | Client<FulfillmentServiceDefinition>
-  | Client<FulfillmentProductServiceDefinition>
-  | Client<InvoiceServiceDefinition>;
+| Client<TaxServiceDefinition>
+| Client<CustomerServiceDefinition>
+| Client<ShopServiceDefinition>
+| Client<OrganizationServiceDefinition>
+| Client<ContactPointServiceDefinition>
+| Client<AddressServiceDefinition>
+| Client<CountryServiceDefinition>
+| Client<FulfillmentServiceDefinition>
+| Client<FulfillmentProductServiceDefinition>
+| Client<InvoiceServiceDefinition>;
 
 const CREATE_FULFILLMENT = 'createFulfillment';
 
@@ -130,42 +130,42 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
     OK: {
       id: string;
       code: 200;
-      message: "OK";
+      message: 'OK';
     };
     NOT_FOUND: {
       id: string;
       code: 404;
-      message: "{entity} {id} not found!";
+      message: '{entity} {id} not found!';
     };
     NOT_SUBMITTED: {
       id: string;
       code: 400;
-      message: "order {id} expected to be submitted!";
+      message: 'order {id} expected to be submitted!';
     };
     NO_PHYSICAL_ITEM: {
       id: string;
       code: 208;
-      message: "order {id} includes no physical item!";
+      message: 'order {id} includes no physical item!';
     };
     IN_HOMOGEN_INVOICE: {
-      id: string
-      code: 400,
-      message: "{entity} {id} must have identical customer_id and shop_id to master {entity}!"
+      id: string;
+      code: 400;
+      message: '{entity} {id} must have identical customer_id and shop_id to master {entity}!';
     };
   };
 
   private readonly operation_status_codes: {
     SUCCESS: {
       code: 200;
-      message: "SUCCESS";
+      message: 'SUCCESS';
     };
     PARTIAL: {
       code: 400;
-      message: "Patrial executed with errors!";
+      message: 'Patrial executed with errors!';
     };
     LIMIT_EXHAUSTED: {
       code: 500;
-      message: "Query limit 1000 exhausted!";
+      message: 'Query limit 1000 exhausted!';
     };
   };
 
@@ -213,12 +213,12 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
     this.status_codes = {
       ...this.status_codes,
       ...cfg.get('statusCodes'),
-    }
+    };
 
     this.operation_status_codes = {
       ...this.operation_status_codes,
       ...cfg.get('operationStatusCodes'),
-    }
+    };
 
     this.instance_type = cfg.get('urns:instanceType');
     this.actions = cfg.get('actions');
@@ -358,7 +358,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       ).replace(
         '{id}', id
       ) ?? 'Unknown status',
-    }
+    };
   }
 
   private parseOperationStatusCode(
@@ -370,7 +370,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       message: status?.message?.replace(
         '{entity}', entity
       ) ?? 'Unknown status',
-    }
+    };
   }
 
   private handleError(e: any) {
@@ -496,7 +496,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       return [{
         product_id: main.id,
         variant_id,
-        quantity: quantity,
+        quantity,
         package: variant.package,
       }];
     }
@@ -504,7 +504,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       return [{
         product_id: main.id,
         variant_id,
-        quantity: quantity,
+        quantity,
         package: main.bundle.pre_packaged,
       }];
     }
@@ -629,7 +629,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         if (response.operation_status?.code === 200) {
           return response.items?.reduce(
             (a, b) => {
-              a[b.payload?.id] = b.payload
+              a[b.payload?.id] = b.payload;
               return a;
             },
             {} as RatioedTaxMap
@@ -737,7 +737,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         if (response.operation_status?.code === 200) {
           return response.items?.reduce(
             (a, b) => {
-              a[b.payload?.id] = b
+              a[b.payload?.id] = b;
               return a;
             }, {} as T
           );
@@ -819,7 +819,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       subject,
       context,
     );
-    
+
     const getTaxesRecursive = (
       main: Product,
       price_ratio = 1.0
@@ -852,7 +852,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       else {
         return variant;
       }
-    }
+    };
 
     const items = order_list.items.map((order) => {
       try {
@@ -889,7 +889,6 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
               }) as VAT
             );
             const net = vats.reduce((a, b) => b.vat + a, 0);
-            
             item.unit_price = unit_price;
             item.amount = {
               gross,
@@ -930,7 +929,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
                 },
                 {} as { [key: string]: VAT }
               )
-            )
+            );
           }
         );
 
@@ -1235,7 +1234,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
 
     solutions.items.forEach(
       item => {
-        responseMap[item.reference.instance_id ?? item.status.id] = item
+        responseMap[item.reference.instance_id ?? item.status.id] = item;
       }
     );
 
@@ -1476,7 +1475,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
               message: 'Order not found!',
               ...master?.status,
             }
-          }
+          };
         }
 
         for (let section of item.sections) {
@@ -1491,7 +1490,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
                 message: 'Order not found!',
                 ...order?.status,
               }
-            }
+            };
           }
           else if (
             order.payload?.customer_id !== master?.payload?.customer_id ||
@@ -1504,7 +1503,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
                 order.payload?.id,
                 this.status_codes.IN_HOMOGEN_INVOICE
               ),
-            }
+            };
           }
         }
 
@@ -1605,7 +1604,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
                         },
                         {} as VATMap
                       )
-                    )
+                    );
                   }
                 );
 
@@ -1670,7 +1669,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
             this.operation_status_codes.PARTIAL,
           )
           : response.operation_status,
-      }
+      };
     }
     catch (e) {
       return this.handleError(e);
