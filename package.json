@@ -26,7 +26,7 @@
     "@restorecommerce/kafka-client": "^1.0.8",
     "@restorecommerce/logger": "^1.2.3",
     "@restorecommerce/rc-grpc-clients": "^3.1.0",
-    "@restorecommerce/resource-base-interface": "^1.2.3",
+    "@restorecommerce/resource-base-interface": "^1.2.5",
     "@restorecommerce/service-config": "^1.0.4",
     "lodash": "^4.17.21",
     "nice-grpc": "^2.1.4",
