@@ -1,9 +1,10 @@
 {
-  "compilerOptions": {
-    "outDir": "test"
-  },
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "test/bin",
+  },
   "include": [
-    "./test/**/.ts"
+    "src/**/*.ts",
+    "test/**/*.ts"
   ]
 }

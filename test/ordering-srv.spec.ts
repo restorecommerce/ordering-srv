@@ -1,8 +1,14 @@
 import {} from 'mocha';
-import * as should from 'should';
+import should from 'should';
 import { Client } from 'nice-grpc';
 import { createClient, createChannel, GrpcClientConfig } from '@restorecommerce/grpc-client';
 import { Events, Topic } from '@restorecommerce/kafka-client';
+import {
+  FulfillmentRequest,
+  Order,
+  OrderServiceDefinition
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order';
+import { GrpcMockServer } from '@alenon/grpc-mock-server';
 import { Worker } from '../src/worker';
 import {
   cfg,
@@ -13,8 +19,6 @@ import {
   connectTopics,
   mockServices
 } from '.';
-import { FulfillmentRequest, Order, OrderServiceDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order';
-import { GrpcMockServer } from '@alenon/grpc-mock-server';
 
 
 describe('The Ordering Service:', () => {

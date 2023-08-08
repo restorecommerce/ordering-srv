@@ -1,4 +1,4 @@
-import * as should from 'should';
+import should from 'should';
 import { GrpcMockServer } from '@alenon/grpc-mock-server';
 import { createServiceConfig } from '@restorecommerce/service-config';
 import { createLogger } from '@restorecommerce/logger';
@@ -6,7 +6,7 @@ import { Events, Topic } from '@restorecommerce/kafka-client';
 import { Worker } from '../src/worker';
 import { rules } from './mocks';
 
-export const cfg = createServiceConfig('test');
+export const cfg = createServiceConfig(process.cwd());
 export const logger = createLogger(cfg.get('logger'));
 export { samples } from './mocks';
 

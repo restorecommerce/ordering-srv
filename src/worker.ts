@@ -189,8 +189,8 @@ export class Worker {
         );
       },
       [FULFILLMENT_SUBMITTED]: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-        if (msg.packaging?.reference?.instance_type !== orderService.instance_type) return;
-        const ids = [msg.packaging?.reference?.instance_id];
+        if (msg?.reference?.instance_type !== orderService.instance_type) return;
+        const ids = [msg?.reference?.instance_id];
         const subject = {} as Subject; // System Admin?
         return orderService.updateState(ids, OrderState.IN_PROCESS, subject, context).then(
           () => that.logger.info(`Event ${eventName} done.`),
@@ -198,8 +198,8 @@ export class Worker {
         );
       },
       [FULFILLMENT_INVALIDE]: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-        if (msg.packaging?.reference?.instance_type !== orderService.instance_type) return;
-        const ids = [msg.packaging?.reference?.instance_id];
+        if (msg?.reference?.instance_type !== orderService.instance_type) return;
+        const ids = [msg?.reference?.instance_id];
         const subject = {} as Subject; // System Admin?
         return orderService.updateState(ids, OrderState.INVALID, subject, context).then(
           () => that.logger.info(`Event ${eventName} done.`),
@@ -207,8 +207,8 @@ export class Worker {
         );
       },
       [FULFILLMENT_FULFILLED]: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-        if (msg.packaging?.reference?.instance_type !== orderService.instance_type) return;
-        const ids = [msg.packaging?.reference?.instance_id];
+        if (msg?.reference?.instance_type !== orderService.instance_type) return;
+        const ids = [msg?.reference?.instance_id];
         const subject = {} as Subject; // System Admin?
         return orderService.updateState(ids, OrderState.DONE, subject, context).then(
           () => that.logger.info(`Event ${eventName} done.`),
@@ -216,8 +216,8 @@ export class Worker {
         );
       },
       [FULFILLMENT_FAILED]: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-        if (msg.packaging?.reference?.instance_type !== orderService.instance_type) return;
-        const ids = [msg.packaging?.reference?.instance_id];
+        if (msg?.reference?.instance_type !== orderService.instance_type) return;
+        const ids = [msg?.reference?.instance_id];
         const subject = {} as Subject; // System Admin?
         return orderService.updateState(ids, OrderState.FAILED, subject, context).then(
           () => that.logger.info(`Event ${eventName} done.`),
@@ -225,8 +225,8 @@ export class Worker {
         );
       },
       [FULFILLMENT_CANCELLED]: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-        if (msg.packaging?.reference?.instance_type !== orderService.instance_type) return;
-        const ids = [msg.packaging?.reference.instance_id];
+        if (msg?.reference?.instance_type !== orderService.instance_type) return;
+        const ids = [msg?.reference.instance_id];
         const subject = {} as Subject; // System Admin?
         return orderService.updateState(ids, OrderState.CANCELLED, subject, context).then(
           () => that.logger.info(`Event ${eventName} done.`),

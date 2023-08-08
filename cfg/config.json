@@ -279,86 +279,6 @@
     }
   },
   "server": {
-    "services": {
-      "io-restorecommerce-ordering-srv": {
-        "create": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        },
-        "read": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        },
-        "delete": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        },
-        "update": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        },
-        "upsert": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        },
-        "queryPackingSolution": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        },
-        "createFulfillment": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        },
-        "triggerFulfillment": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        },
-        "createInvoice": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        },
-        "triggerInvoice": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        }
-      },
-      "io-restorecommerce-ordering-reflection": {
-        "serverReflectionInfo": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        }
-      },
-      "io-restorecommerce-ordering-cis": {
-        "command": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        }
-      },
-      "grpc-health-v1": {
-        "check": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        },
-        "watch": {
-          "transport": [
-            "grpcOrdering"
-          ]
-        }
-      }
-    },
     "transports": [
       {
         "name": "grpcOrdering",
@@ -430,7 +350,7 @@
       "message": "Query limit 1000 for {entity} exhausted!"
     }
   },
-  "ids": {
-    "legal_address_type": "legal_address"
+  "preDefinedIds": {
+    "legalAddressTypeId": "legal_address"
   }
 }

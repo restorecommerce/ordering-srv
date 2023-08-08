@@ -36,9 +36,6 @@
     "organization": {
       "address": "resource-srv:50051"
     },
-    "contact-point-type": {
-      "address": "resource-srv:50051"
-    },
     "contact-point": {
       "address": "resource-srv:50051"
     },

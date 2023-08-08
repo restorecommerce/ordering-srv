@@ -1,5 +1,5 @@
-import { Client } from 'nice-grpc';
 import {
+  Client,
   createClient,
   createChannel,
   GrpcClientConfig
@@ -53,7 +53,6 @@ import {
 import {
   CountryServiceDefinition, CountryResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/country';
-
 import {
   FulfillmentServiceDefinition,
   Item as FulfillmentItem,
@@ -126,47 +125,52 @@ export type CRUDClient = Client<ProductServiceDefinition>
 const CREATE_FULFILLMENT = 'createFulfillment';
 
 export class OrderingService extends ServiceBase<OrderListResponse, OrderList> implements OrderServiceImplementation {
-  private readonly status_codes: {
+  private readonly status_codes: { [key: string]: Status } = {
     OK: {
-      id: string;
-      code: 200;
-      message: 'OK';
-    };
+      id: '',
+      code: 200,
+      message: 'OK',
+    },
     NOT_FOUND: {
-      id: string;
-      code: 404;
-      message: '{entity} {id} not found!';
-    };
+      id: '',
+      code: 404,
+      message: '{entity} {id} not found!',
+    },
+    NO_LEGAL_ADDRESS: {
+      id: '',
+      code: 404,
+      message: '{entity} {id} has no legal address!',
+    },
     NOT_SUBMITTED: {
-      id: string;
-      code: 400;
-      message: 'order {id} expected to be submitted!';
-    };
+      id: '',
+      code: 400,
+      message: '{entity} {id} expected to be submitted!',
+    },
     NO_PHYSICAL_ITEM: {
-      id: string;
-      code: 208;
-      message: 'order {id} includes no physical item!';
-    };
+      id: '',
+      code: 208,
+      message: '{entity} {id} includes no physical item!',
+    },
     IN_HOMOGEN_INVOICE: {
-      id: string;
-      code: 400;
-      message: '{entity} {id} must have identical customer_id and shop_id to master {entity}!';
-    };
+      id: '',
+      code: 400,
+      message: '{entity} {id} must have identical customer_id and shop_id to master {entity}!',
+    },
   };
 
-  private readonly operation_status_codes: {
+  private readonly operation_status_codes: { [key: string]: OperationStatus } = {
     SUCCESS: {
-      code: 200;
-      message: 'SUCCESS';
-    };
+      code: 200,
+      message: 'SUCCESS',
+    },
     PARTIAL: {
-      code: 400;
-      message: 'Patrial executed with errors!';
-    };
+      code: 400,
+      message: 'Patrial executed with errors!',
+    },
     LIMIT_EXHAUSTED: {
-      code: 500;
-      message: 'Query limit 1000 exhausted!';
-    };
+      code: 500,
+      message: 'Query limit 1000 exhausted!',
+    },
   };
 
   private readonly product_service: Client<ProductServiceDefinition>;
@@ -183,6 +187,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
 
   private readonly actions: any;
   public readonly instance_type: string;
+  public readonly legal_address_type_id: string;
 
   get entity_name() {
     return this.name;
@@ -195,7 +200,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
   constructor(
     readonly topic: Topic,
     readonly db: DatabaseProvider,
-    private readonly cfg: any,
+    readonly cfg: any,
     readonly logger: any,
   ) {
     super(
@@ -220,6 +225,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       ...cfg.get('operationStatusCodes'),
     };
 
+    this.legal_address_type_id = cfg.get('preDefinedIds:legalAddressTypeId');// ?? 'legal_address';
     this.instance_type = cfg.get('urns:instanceType');
     this.actions = cfg.get('actions');
 
@@ -343,9 +349,10 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
   }
 
   private parseStatusCode(
-    entity: string,
     id: string,
+    entity: string,
     status: Status,
+    entity_id?: string,
     error?: string,
   ): Status {
     return {
@@ -356,7 +363,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       ).replace(
         '{entity}', entity
       ).replace(
-        '{id}', id
+        '{id}', entity_id ?? id
       ) ?? 'Unknown status',
     };
   }
@@ -523,7 +530,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
   private async getProductMap(
     orders: Order[],
     subject?: Subject,
-    context?: any
+    context?: any,
   ): Promise<ProductMap> {
     const product_ids = [...new Set<string>(orders.flatMap(
       (o) => o.items.map(
@@ -749,7 +756,43 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
     );
   }
 
-  private async aggregateOrders(order_list: OrderList, subject?: Subject, context?: any): Promise<DeepPartial<OrderListResponse>> {
+  async getById<T>(
+    request_id: string,
+    map: { [id:string]: T },
+    id: string
+  ): Promise<T> {
+    if (id in map) {
+      return map[id];
+    }
+    else {
+      throw this.parseStatusCode(
+        request_id,
+        typeof({} as T),
+        this.status_codes.NOT_FOUND,
+        id,
+      );
+    }
+  }
+
+  async getByIds<T>(
+    request_id: string,
+    map: { [id:string]: T },
+    ids: string[]
+  ): Promise<T[]> {
+    return Promise.all(ids.map(
+      id => this.getById(
+        request_id,
+        map,
+        id
+      )
+    ));
+  }
+
+  private async aggregateOrders(
+    order_list: OrderList,
+    subject?: Subject,
+    context?: any
+  ): Promise<DeepPartial<OrderListResponse>> {
     const product_map = await this.getProductMap(
       order_list.items,
       subject,
@@ -840,9 +883,9 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       variant_id: string,
     ): ProductVariant => {
       const variant = nature.variants.find(v => v.id === variant_id);
-      if (variant?.template_variant) {
+      if (variant?.parent_variant_id) {
         const template = mergeProductVariantRecursive(
-          nature, variant.template_variant
+          nature, variant.parent_variant_id
         );
         return {
           ...template,
@@ -854,19 +897,58 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       }
     };
 
-    const items = order_list.items.map((order) => {
+    const promises = order_list.items.map(async (order) => {
       try {
-        const shop = shop_map[order.shop_id]?.payload;
-        const orga = organization_map[shop.organization_id]?.payload;
-        const contact_point = orga.contact_point_ids.map(
-          id => contact_point_map[id]?.payload
-        ).find(
-          contact_point => contact_point.contact_point_type_ids.some(
-            id => id === this.cfg.get('ids:legal_address_type')
+        const country = await this.getById(
+          order.id,
+          shop_map,
+          order.shop_id
+        ).then(
+          shop => this.getById(
+            order.id,
+            organization_map,
+            shop.payload.organization_id,
           )
+        ).then(
+          orga => this.getByIds(
+            order.id,
+            contact_point_map,
+            orga.payload.contact_point_ids,
+          )
+        ).then(
+          cps => cps.find(
+            cp => cp.payload.contact_point_type_ids.some(
+              id => id === this.legal_address_type_id
+            )
+          )
+        ).then(
+          cp => {
+            if (!cp) {
+              throw this.parseStatusCode(
+                order.id,
+                'Shop',
+                this.status_codes.NO_LEGAL_ADDRESS,
+                order.shop_id,
+              );
+            }
+            else {
+              return this.getById(
+                order.id,
+                address_map,
+                cp.payload.physical_address_id,
+              );
+            }
+          }
+        ).then(
+          address => this.getById(
+            order.id,
+            country_map,
+            address.payload.country_id
+          )
+        ).then(
+          country => country.payload
         );
-        const address = address_map[contact_point.physical_address_id]?.payload;
-        const country = country_map[address.country_id]?.payload;
+        
         order.items.forEach(
           (item) => {
             const product = product_map[item.product_id]?.payload;
@@ -888,7 +970,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
                 vat: gross * t.rate * t.tax_ratio
               }) as VAT
             );
-            const net = vats.reduce((a, b) => b.vat + a, 0);
+            const net = vats.reduce((a, b) => b.vat + a, gross);
             item.unit_price = unit_price;
             item.amount = {
               gross,
@@ -936,9 +1018,9 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         return {
           payload: order,
           status: this.parseStatusCode(
-            this.name,
             order?.id,
-            this.status_codes.OK
+            typeof(order),
+            this.status_codes.OK,
           ),
         } as OrderResponse;
       }
@@ -954,6 +1036,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       }
     }) as OrderResponse[];
 
+    const items = await Promise.all(promises);
     const status = items.reduce(
       (a, b) => a.status?.code > b.status?.code ? a : b
     )?.status;
@@ -1174,11 +1257,11 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         const order = orders[item.order_id];
 
         if (!order) {
-          response.status = {
-            id: item.order_id,
-            code: 404,
-            message: `${this.name} ${item.order_id} not found!`
-          } as Status;
+          response.status = this.parseStatusCode(
+            item.order_id,
+            this.entity_name,
+            this.status_codes.NOT_FOUND,
+          );
           return false;
         }
 
@@ -1203,11 +1286,11 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         );
 
         if (items.length === 0) {
-          response.status = {
-            id: item.order_id,
-            code: 208,
-            message: `Skip ${this.name} ${item.order_id} containing no physical item!`,
-          } as Status;
+          response.status = this.parseStatusCode(
+            item.order_id,
+            this.entity_name,
+            this.status_codes.NO_PHYSICAL_ITEM,
+          );
         }
 
         return {
@@ -1469,12 +1552,11 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         if (master?.status?.code !== 200) {
           return {
             payload: null,
-            status: {
-              id: item.sections[0]?.order_id,
-              code: 404,
-              message: 'Order not found!',
-              ...master?.status,
-            }
+            status: master?.status ?? this.parseStatusCode(
+              item.sections[0]?.order_id,
+              this.entity_name,
+              this.status_codes.NOT_FOUND,
+            )
           };
         }
 
@@ -1484,12 +1566,11 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
           if (order?.status?.code !== 200) {
             return {
               payload: null,
-              status: {
-                id: section.order_id,
-                code: 404,
-                message: 'Order not found!',
-                ...order?.status,
-              }
+              status: order?.status ?? this.parseStatusCode(
+                section.order_id,
+                this.entity_name,
+                this.status_codes.NOT_FOUND,
+              )
             };
           }
           else if (
@@ -1499,8 +1580,8 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
             return {
               payload: null,
               status: this.parseStatusCode(
-                this.name,
-                order.payload?.id,
+                section.order_id,
+                typeof(order.payload),
                 this.status_codes.IN_HOMOGEN_INVOICE
               ),
             };
@@ -1621,8 +1702,8 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
             )
           },
           status: this.parseStatusCode(
-            'invoice',
             master.payload.id,
+            'Invoice',
             this.status_codes.OK,
           ),
         };
@@ -1665,7 +1746,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         total_count: response.items.length + invalids.length,
         operation_status: invalids.length
           ? this.parseOperationStatusCode(
-            'invoice',
+            'Invoice',
             this.operation_status_codes.PARTIAL,
           )
           : response.operation_status,

@@ -1,45 +1,45 @@
 import { 
   OrderList,
   OrderState,
-} from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order";
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order';
 import { 
   ProductListResponse, ProductResponse
-} from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/product";
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/product';
 import {
   OrganizationListResponse, OrganizationResponse
-} from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/organization";
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/organization';
 import {
   ContactPointListResponse, ContactPointResponse
-} from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/contact_point";
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/contact_point';
 import {
   AddressListResponse, BillingAddress, ShippingAddress
-} from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/address";
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/address';
 import {
   CountryListResponse,
   CountryResponse
-} from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/country";
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/country';
 import {
   TaxListResponse, TaxResponse
-} from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/tax";
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/tax';
 import {
   TaxTypeListResponse
-} from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/tax_type";
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/tax_type';
 import {
   PackingSolutionListResponse
-} from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment_product";
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment_product';
 import {
   ShopListResponse, ShopResponse
-} from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/shop";
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/shop';
 import {
   CustomerListResponse
-} from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/customer";
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/customer';
 import {
   FulfillmentListResponse,
   State as FulfillmentState
-} from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment";
-import { OperationStatus } from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/status";
-import { InvoiceListResponse, PaymentState } from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/invoice";
-import { DeepPartial } from "@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/resource_base";
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment';
+import { OperationStatus } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/status';
+import { InvoiceListResponse, PaymentState } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/invoice';
+import { DeepPartial } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/resource_base';
 
 type Address = ShippingAddress & BillingAddress;
 
@@ -141,7 +141,6 @@ const products: ProductResponse[] = [
                 regularPrice: 9.99,
                 salePrice: 8.99,
                 sale: false,
-                taxIds: [],
               },
               images: [],
               files: [],
@@ -156,11 +155,16 @@ const products: ProductResponse[] = [
                 weightInKg: 0.58,
                 rotatable: true,
               },
-              attributes: [
+              properties: [
                 {
-                  id: 'urn:product:property:color:name',
+                  id: 'urn:product:property:color:main:name',
                   value: 'blue',
-                  attributes: [],
+                  unitCode: 'text',
+                },
+                {
+                  id: 'urn:product:property:color:main:value',
+                  value: '#0000FF',
+                  unitCode: '#RGB',
                 }
               ],
             },
@@ -170,14 +174,19 @@ const products: ProductResponse[] = [
               description: 'This is a physical product in red',
               images: [],
               files: [],
-              attributes: [
+              properties: [
                 {
-                  id: 'urn:product:property:color:name',
+                  id: 'urn:product:property:color:main:name',
                   value: 'red',
-                  attributes: [],
+                  unitCode: 'text',
+                },
+                {
+                  id: 'urn:product:property:color:main:value',
+                  value: '#FF0000',
+                  unitCode: '#RGB',
                 }
               ],
-              templateVariant: '1',
+              parentVariantId: '1',
             }
           ]
         }
@@ -202,7 +211,7 @@ const contactPoints = [
       description: 'A mocked Contact Point for testing',
       email: 'info@shop.com',
       localeId: 'localization_1',
-      physicalAddressId: 'address_2',
+      physicalAddressId: businessAddresses[0].address?.id,
       telephone: '0123456789',
       timezoneId: 'timezone_1',
       website: 'www.shop.com',
@@ -279,19 +288,19 @@ const validOrders: OrderList[] = [
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
         meta: {
-          modifiedBy: "SYSTEM",
+          modifiedBy: 'SYSTEM',
           acls: [],
           created: new Date(),
           modified: new Date(),
           owners: [
             {
-              id: "urn:restorecommerce:acs:names:ownerIndicatoryEntity",
-              value: "urn:restorecommerce:acs:model:user.User",
+              id: 'urn:restorecommerce:acs:names:ownerIndicatoryEntity',
+              value: 'urn:restorecommerce:acs:model:user.User',
               attributes: []
             },
             {
-              id: "urn:restorecommerce:acs:names:ownerInstance",
-              value: "UserID",
+              id: 'urn:restorecommerce:acs:names:ownerInstance',
+              value: 'UserID',
               attributes: []
             }
           ]
@@ -300,9 +309,9 @@ const validOrders: OrderList[] = [
     ],
     totalCount: 1,
     subject: {
-      id: "",
-      scope: "",
-      token: "",
+      id: '',
+      scope: '',
+      token: '',
       unauthenticated: true
     }
   }
@@ -337,19 +346,19 @@ const invalidOrders: OrderList[] = [
         shippingAddress: residentialAddresses[0],
         orderState: OrderState.CREATED,
         meta: {
-          modifiedBy: "SYSTEM",
+          modifiedBy: 'SYSTEM',
           created: new Date(),
           modified: new Date(),
           acls: [],
           owners: [
             {
-              id: "urn:restorecommerce:acs:names:ownerIndicatoryEntity",
-              value: "urn:restorecommerce:acs:model:user.User",
+              id: 'urn:restorecommerce:acs:names:ownerIndicatoryEntity',
+              value: 'urn:restorecommerce:acs:model:user.User',
               attributes: []
             },
             {
-              id: "urn:restorecommerce:acs:names:ownerInstance",
-              value: "UserID",
+              id: 'urn:restorecommerce:acs:names:ownerInstance',
+              value: 'UserID',
               attributes: []
             }
           ]
@@ -358,9 +367,9 @@ const invalidOrders: OrderList[] = [
     ],
     totalCount: 1,
     subject: {
-      id: "",
-      scope: "",
-      token: "",
+      id: '',
+      scope: '',
+      token: '',
       unauthenticated: true
     }
   }
