@@ -26,27 +26,35 @@
       "db-orderStore": 9
     }
   },
+  "logger": {
+    "console": {
+      "handleExceptions": false,
+      "level": "silly",
+      "colorize": true,
+      "prettyPrint": true
+    }
+  },
   "fieldHandlers": {
     "timeStampFields": ["meta.created", "meta.modified"]
   },
-  "actions": {
-    "FAILED": "orderFailed",
-    "INVALID": "orderInvalid",
-    "SUBMITTED": "orderSubmitted",
-    "IN_PROCESS": "orderInProcess",
-    "DONE": "orderDone",
-    "WITHDRAWN": "orderWithdrawn",
-    "CANCELLED": "orderCancelled",
-    "CREATE_FULFILLMENTS": "createFulfillments",
-    "CREATE_INVOICES": "createInvoices"
-  },
   "events": {
+    "enableEvents": true,
+    "emitters": {
+      "FAILED": "orderFailed",
+      "INVALID": "orderInvalid",
+      "SUBMITTED": "orderSubmitted",
+      "IN_PROCESS": "orderInProcess",
+      "DONE": "orderDone",
+      "WITHDRAWN": "orderWithdrawn",
+      "CANCELLED": "orderCancelled",
+      "CREATE_FULFILLMENTS": "createFulfillments",
+      "CREATE_INVOICES": "createInvoices"
+    },
     "kafka": {
       "provider": "kafka",
-      "groupId": "ordering-srv",
-      "clientId": "ordering-srv",
+      "groupId": "restore-ordering-srv",
       "kafka": {
-        "clientId": "ordering-srv",
+        "clientId": "restore-ordering-srv",
         "brokers": [
           "localhost:29092"
         ]
@@ -61,20 +69,32 @@
       "orderDeleted": {
         "messageObject": "io.restorecommerce.order.Deleted"
       },
-      "queryPackingSolution": {
-        "messageObject": "io.restorecommerce.fulfillment_product.PackingSolutionListResponse"
+      "orderFailed": {
+        "messageObject": "io.restorecommerce.order.OrderResponse"
       },
-      "createFulfillment": {
+      "orderInvalid": {
+        "messageObject": "io.restorecommerce.order.OrderResponse"
+      },
+      "orderSubmitted": {
+        "messageObject": "io.restorecommerce.order.Order"
+      },
+      "orderInProcess": {
+        "messageObject": "io.restorecommerce.order.Order"
+      },
+      "orderDone": {
+        "messageObject": "io.restorecommerce.order.Order"
+      },
+      "orderWithdrawn": {
+        "messageObject": "io.restorecommerce.order.Order"
+      },
+      "orderCancelled": {
+        "messageObject": "io.restorecommerce.order.Order"
+      },
+      "createFulfillments": {
         "messageObject": "io.restorecommerce.order.FulfillmentRequestList"
       },
-      "triggerFulfillment": {
-        "messageObject": "io.restorecommerce.order.FulfillmentRequestList"
-      },
-      "createInvoice": {
-        "messageObject": "io.restorecommerce.invoice.InvoiceListResponse"
-      },
-      "tiggerInvoice": {
-        "messageObject": "io.restorecommerce.status.StatusListResponse"
+      "createInvoices": {
+        "messageObject": "io.restorecommerce.order.InvoiceRequestList"
       },
       "restoreCommand": {
         "messageObject": "io.restorecommerce.commandinterface.CommandRequest"
@@ -107,15 +127,37 @@
         "command": {
           "topic": "io.restorecommerce.command"
         },
+        "jobs": {
+          "topic": "io.restorecommerce.jobs",
+          "events": {
+            "queuedJob": "handleQueuedJob"
+          }
+        },
         "ordering.resource": {
-          "topic": "io.restorecommerce.ordering.resource"
+          "topic": "io.restorecommerce.ordering.resource",
+          "events": {
+            "createOrders": "handleCreateOrders",
+            "updateOrders": "handleUpdateOrders",
+            "upsertOrders": "handleUpsertOrders",
+            "submitOrders": "handleSubmitOrders",
+            "fulfillOrders": "handleFulfillOrders",
+            "withdrawOrders": "handleWithdrawOrders",
+            "cancelOrders": "handleCancelOrders"
+          }
         },
         "fulfillment.resource": {
-          "topic": "io.restorecommerce.fulfillment.resource"
+          "topic": "io.restorecommerce.fulfillment.resource",
+          "events": {
+            "fulfillmentSubmitted": "handleFulfillmentSubmitted",
+            "fulfillmentInvalid": "handleFulfillmentInvalid",
+            "fulfillmentFailed": "handleFulfillmentFailed",
+            "fulfillmentFulfilled": "handleFulfillmentFulfilled",
+            "fulfillmentWithdrawn": "handleFulfillmentWithdrawn",
+            "fulfillmentCancelled": "handleFulfillmentCancelled"
+          }
         }
       }
-    },
-    "enableEvents": false
+    }
   },
   "client": {
     "order": {
@@ -292,14 +334,6 @@
     "reflection": "io-restorecommerce-ordering-reflection",
     "cis": "io-restorecommerce-ordering-cis",
     "health":  "grpc-health-v1"
-  },
-  "logger": {
-    "console": {
-      "handleExceptions": false,
-      "level": "silly",
-      "colorize": true,
-      "prettyPrint": true
-    }
   },
   "urns": {
     "instanceType": "urn:restorecommerce:ordering:Order",

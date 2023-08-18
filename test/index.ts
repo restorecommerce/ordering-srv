@@ -17,11 +17,13 @@ export async function startWorker(): Promise<Worker> {
 }
   
 export async function connectEvents(): Promise<Events> {
+  const id = `restore-ordering-srv-test-${new Date().getTime()}`;
   const events = new Events({
     ...cfg.get('events:kafka'),
-    groupId: 'restore-ordering-srv-test-runner',
+    groupId: id,
     kafka: {
       ...cfg.get('events:kafka:kafka'),
+      clientId: id,
     }
   }, logger);
   await events.start();

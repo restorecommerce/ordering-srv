@@ -124,7 +124,10 @@ export type CRUDClient = Client<ProductServiceDefinition>
 
 const CREATE_FULFILLMENT = 'createFulfillment';
 
-export class OrderingService extends ServiceBase<OrderListResponse, OrderList> implements OrderServiceImplementation {
+export class OrderingService
+  extends ServiceBase<OrderListResponse, OrderList>
+  implements OrderServiceImplementation
+{
   private readonly status_codes: { [key: string]: Status } = {
     OK: {
       id: '',
@@ -173,21 +176,20 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
     },
   };
 
-  private readonly product_service: Client<ProductServiceDefinition>;
-  private readonly tax_service: Client<TaxServiceDefinition>;
-  private readonly customer_service: Client<CustomerServiceDefinition>;
-  private readonly shop_service: Client<ShopServiceDefinition>;
-  private readonly organization_service: Client<OrganizationServiceDefinition>;
-  private readonly contact_point_service: Client<ContactPointServiceDefinition>;
-  private readonly address_service: Client<AddressServiceDefinition>;
-  private readonly country_service: Client<CountryServiceDefinition>;
-  private readonly fulfillment_service: Client<FulfillmentServiceDefinition>;
-  private readonly fulfillment_product_service: Client<FulfillmentProductServiceDefinition>;
-  private readonly invoice_service: Client<InvoiceServiceDefinition>;
-
-  private readonly actions: any;
-  public readonly instance_type: string;
-  public readonly legal_address_type_id: string;
+  protected readonly emitters: any;
+  protected readonly instance_type: string;
+  protected readonly legal_address_type_id: string;
+  protected readonly product_service: Client<ProductServiceDefinition>;
+  protected readonly tax_service: Client<TaxServiceDefinition>;
+  protected readonly customer_service: Client<CustomerServiceDefinition>;
+  protected readonly shop_service: Client<ShopServiceDefinition>;
+  protected readonly organization_service: Client<OrganizationServiceDefinition>;
+  protected readonly contact_point_service: Client<ContactPointServiceDefinition>;
+  protected readonly address_service: Client<AddressServiceDefinition>;
+  protected readonly country_service: Client<CountryServiceDefinition>;
+  protected readonly fulfillment_service: Client<FulfillmentServiceDefinition>;
+  protected readonly fulfillment_product_service: Client<FulfillmentProductServiceDefinition>;
+  protected readonly invoice_service: Client<InvoiceServiceDefinition>;
 
   get entity_name() {
     return this.name;
@@ -227,7 +229,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
 
     this.legal_address_type_id = cfg.get('preDefinedIds:legalAddressTypeId');// ?? 'legal_address';
     this.instance_type = cfg.get('urns:instanceType');
-    this.actions = cfg.get('actions');
+    this.emitters = cfg.get('events:emitters');
 
     this.product_service = createClient(
       {
@@ -348,7 +350,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
     }
   }
 
-  private parseStatusCode(
+  private createStatusCode(
     id: string,
     entity: string,
     status: Status,
@@ -368,7 +370,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
     };
   }
 
-  private parseOperationStatusCode(
+  private createOperationStatusCode(
     entity: string,
     status: OperationStatus,
   ): OperationStatus {
@@ -380,10 +382,8 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
     };
   }
 
-  private handleError(e: any) {
-    this.logger.error(e);
-    console.error(e);
-    return {
+  private catchOperationError(e: any) {
+    const error = {
       items: [],
       total_count: 0,
       operation_status: {
@@ -391,6 +391,8 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         message: e?.message ?? e?.details ?? e?.toString(),
       }
     };
+    this.logger.error(error);
+    return error;
   }
 
   private getOrdersById(
@@ -401,7 +403,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
     const order_ids = [... new Set(ids)];
 
     if (order_ids.length > 1000) {
-      throw this.parseOperationStatusCode(
+      throw this.createOperationStatusCode(
         this.name,
         this.operation_status_codes.LIMIT_EXHAUSTED,
       );
@@ -541,7 +543,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
     )).values()];
 
     if (product_ids.length > 1000) {
-      throw this.parseOperationStatusCode(
+      throw this.createOperationStatusCode(
         'product',
         this.operation_status_codes.LIMIT_EXHAUSTED,
       );
@@ -658,7 +660,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
     order_ids = [...new Set<string>(order_ids)];
 
     if (order_ids.length > 1000) {
-      throw this.parseOperationStatusCode(
+      throw this.createOperationStatusCode(
         'fulfillment',
         this.operation_status_codes.LIMIT_EXHAUSTED,
       );
@@ -717,7 +719,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
     const entity = typeof ({} as T);
 
     if (ids.length > 1000) {
-      throw this.parseOperationStatusCode(
+      throw this.createOperationStatusCode(
         entity,
         this.operation_status_codes.LIMIT_EXHAUSTED,
       );
@@ -765,7 +767,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       return map[id];
     }
     else {
-      throw this.parseStatusCode(
+      throw this.createStatusCode(
         request_id,
         typeof({} as T),
         this.status_codes.NOT_FOUND,
@@ -917,14 +919,14 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
           )
         ).then(
           cps => cps.find(
-            cp => cp.payload.contact_point_type_ids.some(
-              id => id === this.legal_address_type_id
-            )
+            cp => cp.payload.contact_point_type_ids.indexOf(
+              this.legal_address_type_id
+            ) >= 0
           )
         ).then(
           cp => {
             if (!cp) {
-              throw this.parseStatusCode(
+              throw this.createStatusCode(
                 order.id,
                 'Shop',
                 this.status_codes.NO_LEGAL_ADDRESS,
@@ -1017,7 +1019,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
 
         return {
           payload: order,
-          status: this.parseStatusCode(
+          status: this.createStatusCode(
             order?.id,
             typeof(order),
             this.status_codes.OK,
@@ -1025,6 +1027,9 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         } as OrderResponse;
       }
       catch (e) {
+        if (order) {
+          order.order_state = OrderState.INVALID;
+        };
         return {
           payload: order,
           status: {
@@ -1084,10 +1089,16 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
 
       if (response.operation_status.code === 200) {
         response.items?.forEach(
-          item => {
-            responseMap[item.payload?.id ?? item.status?.id] = item as OrderResponse;
-            if (item.status?.code === 200 && item.payload.order_state in this.actions) {
-              this.topic.emit(this.actions[item.payload.order_state], item);
+          (item: OrderResponse) => {
+            responseMap[item.payload?.id ?? item.status?.id] = item;
+            if (item.status?.code === 200 && item?.payload?.order_state in this.emitters) {
+              switch (item.payload.order_state) {
+                case OrderState.INVALID, OrderState.FAILED:
+                  this.topic.emit(this.emitters[item.payload.order_state], item);
+                default:
+                  this.topic.emit(this.emitters[item.payload.order_state], item.payload);
+                  break;
+              }
             }
           }
         );
@@ -1103,7 +1114,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       } as OrderListResponse;
     }
     catch (e) {
-      return this.handleError(e);
+      return this.catchOperationError(e);
     }
   }
 
@@ -1119,7 +1130,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       );
     }
     catch (e) {
-      return this.handleError(e);
+      return this.catchOperationError(e);
     }
   }
 
@@ -1143,9 +1154,9 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         response => {
           if (response.operation_status.code === 200) {
             return response.items.filter(
-              item => {
+              (item: OrderResponse) => {
                 if (item.status?.id in responseMap) {
-                  responseMap[item.status.id].status = item.status as Status;
+                  responseMap[item.status.id] = item;
                 }
                 return item.status?.code === 200;
               }
@@ -1174,14 +1185,24 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       orders.items.forEach(
         item => {
           responseMap[item.payload?.id ?? item.status?.id] = item;
-          if (item.status?.code === 200 &&
-            item.payload?.order_state === OrderState.SUBMITTED &&
-            this.actions[OrderState.SUBMITTED]
-          ) {
-            this.topic.emit(this.actions[OrderState.SUBMITTED], item);
-          }
         }
       );
+
+      Object.values(responseMap).forEach(
+        item => {
+          if (
+            item.payload?.order_state in this.emitters
+          ) {
+            switch (item.payload.order_state) {
+              case OrderState.INVALID, OrderState.FAILED:
+                this.topic.emit(this.emitters[item.payload.order_state], item);
+              default:
+                this.topic.emit(this.emitters[item.payload.order_state], item.payload);
+                break;
+            }
+          }
+        }
+      )
 
       return {
         items: Object.values(responseMap),
@@ -1190,7 +1211,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       } as OrderListResponse;
     }
     catch (e) {
-      return this.handleError(e);
+      return this.catchOperationError(e);
     }
   }
 
@@ -1257,7 +1278,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         const order = orders[item.order_id];
 
         if (!order) {
-          response.status = this.parseStatusCode(
+          response.status = this.createStatusCode(
             item.order_id,
             this.entity_name,
             this.status_codes.NOT_FOUND,
@@ -1286,7 +1307,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         );
 
         if (items.length === 0) {
-          response.status = this.parseStatusCode(
+          response.status = this.createStatusCode(
             item.order_id,
             this.entity_name,
             this.status_codes.NO_PHYSICAL_ITEM,
@@ -1336,7 +1357,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       return await this.getPackingSolution(request, context);
     }
     catch (e) {
-      return this.handleError(e);
+      return this.catchOperationError(e);
     }
   }
 
@@ -1463,7 +1484,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       };
     }
     catch (e) {
-      return this.handleError(e);
+      return this.catchOperationError(e);
     }
   }
 
@@ -1505,7 +1526,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       } as FulfillmentList;
 
       this.logger.debug('Emit Fulfillment request', fulfillmentList);
-      await this.topic.emit(this.actions['CREATE_FULFILLMENT'] ?? CREATE_FULFILLMENT, fulfillmentList);
+      await this.topic.emit(this.emitters['CREATE_FULFILLMENT'] ?? CREATE_FULFILLMENT, fulfillmentList);
       this.logger.info('Fulfillment request emitted successfully', fulfillmentList);
 
       return {
@@ -1518,7 +1539,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       };
     }
     catch (e) {
-      return this.handleError(e);
+      return this.catchOperationError(e);
     }
   }
 
@@ -1552,7 +1573,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         if (master?.status?.code !== 200) {
           return {
             payload: null,
-            status: master?.status ?? this.parseStatusCode(
+            status: master?.status ?? this.createStatusCode(
               item.sections[0]?.order_id,
               this.entity_name,
               this.status_codes.NOT_FOUND,
@@ -1566,7 +1587,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
           if (order?.status?.code !== 200) {
             return {
               payload: null,
-              status: order?.status ?? this.parseStatusCode(
+              status: order?.status ?? this.createStatusCode(
                 section.order_id,
                 this.entity_name,
                 this.status_codes.NOT_FOUND,
@@ -1579,7 +1600,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
           ) {
             return {
               payload: null,
-              status: this.parseStatusCode(
+              status: this.createStatusCode(
                 section.order_id,
                 typeof(order.payload),
                 this.status_codes.IN_HOMOGEN_INVOICE
@@ -1701,7 +1722,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
               }
             )
           },
-          status: this.parseStatusCode(
+          status: this.createStatusCode(
             master.payload.id,
             'Invoice',
             this.status_codes.OK,
@@ -1745,7 +1766,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
         ],
         total_count: response.items.length + invalids.length,
         operation_status: invalids.length
-          ? this.parseOperationStatusCode(
+          ? this.createOperationStatusCode(
             'Invoice',
             this.operation_status_codes.PARTIAL,
           )
@@ -1753,7 +1774,7 @@ export class OrderingService extends ServiceBase<OrderListResponse, OrderList> i
       };
     }
     catch (e) {
-      return this.handleError(e);
+      return this.catchOperationError(e);
     }
   };
 

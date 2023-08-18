@@ -31,27 +31,9 @@ import { Logger } from 'winston';
 import { BindConfig } from '@restorecommerce/chassis-srv/lib/microservice/transport/provider/grpc';
 import { HealthDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated-server/grpc/health/v1/health';
 import { ServerReflectionService } from 'nice-grpc-server-reflection';
-import { OrderingCommandInterface } from './commandInterface';
+import { OrderingCommandInterface } from './command_interface';
 import { Fulfillment } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment';
 import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth';
-
-
-const CREATE_ORDERS = 'createOrders';
-const UPDATE_ORDERS = 'updateOrders';
-const UPSERT_ORDERS = 'upsertOrders';
-const SUBMIT_ORDERS = 'submitOrders';
-const SHIP_ORDERS = 'shipOrders';
-const WITHDRAW_ORDERS = 'withdrawOrders';
-const CANCEL_ORDERS = 'cancelOrders';
-const DELETE_ORDERS = 'deleteOrders';
-
-const FULFILLMENT_SUBMITTED = 'fulfillmentSubmitted';
-const FULFILLMENT_INVALIDE = 'fulfillmentInvalide';
-const FULFILLMENT_FAILED = 'fulfillmentFailed';
-const FULFILLMENT_FULFILLED = 'fulfillmentFulfilled';
-const FULFILLMENT_CANCELLED = 'fulfillmentCancelled';
-
-const QUEUED_JOB = 'queuedJob';
 
 registerProtoMeta(
   OrderMeta,
@@ -65,6 +47,8 @@ export class Worker {
   private _events: Events;
   private _logger: Logger;
   private _redisClient: RedisClient;
+  private _orderingService: OrderingService;
+  private _orderingCommandInterface: OrderingCommandInterface;
 
   get cfg() {
     return this._cfg;
@@ -114,12 +98,142 @@ export class Worker {
     this._redisClient = value;
   }
 
+  get orderingService() {
+    return this._orderingService;
+  }
+
+  protected set orderingService(value: OrderingService) {
+    this._orderingService = value;
+  }
+
+  get orderingCommandInterface() {
+    return this._orderingCommandInterface;
+  }
+
+  protected set orderingCommandInterface(value: OrderingCommandInterface) {
+    this._orderingCommandInterface = value;
+  }
+
+  protected readonly topics = new Map<string, Topic>();
+  protected readonly serviceActions = new Map<string, ((msg: any, context: any, config: any, eventName: string) => Promise<void>)>();
+  
+  protected readonly handlers = { 
+    handleCreateOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
+      return this.orderingService?.create(msg, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleUpdateOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
+      return this.orderingService?.update(msg, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleUpsertOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
+      return this.orderingService?.upsert(msg, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleSubmitOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
+      return this.orderingService?.submit(msg, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleShipOrders: (msg: FulfillmentRequestList, context: any, config: any, eventName: string) => {
+      return this.orderingService?.createFulfillment(msg, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleWithdrawOrders: (msg: OrderIdList, context: any, config: any, eventName: string) => {
+      return this.orderingService?.withdraw(msg, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleCancelOrders: (msg: OrderIdList, context: any, config: any, eventName: string) => {
+      return this.orderingService?.cancel(msg, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleDeleteOrders: (msg: any, context: any, config: any, eventName: string) => {
+      return this.orderingService?.delete(msg, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleFulfillmentSubmitted: (msg: Fulfillment, context: any, config: any, eventName: string) => {
+      if (msg?.reference?.instance_type !== this.orderingService.instance_type) return;
+      const ids = [msg?.reference?.instance_id];
+      const subject = {} as Subject; // System Admin?
+      return this.orderingService?.updateState(ids, OrderState.IN_PROCESS, subject, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleFulfillmentInvalide: (msg: Fulfillment, context: any, config: any, eventName: string) => {
+      if (msg?.reference?.instance_type !== this.orderingService.instance_type) return;
+      const ids = [msg?.reference?.instance_id];
+      const subject = {} as Subject; // System Admin?
+      return this.orderingService?.updateState(ids, OrderState.INVALID, subject, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleFulfillmentFulfilled: (msg: Fulfillment, context: any, config: any, eventName: string) => {
+      if (msg?.reference?.instance_type !== this.orderingService.instance_type) return;
+      const ids = [msg?.reference?.instance_id];
+      const subject = {} as Subject; // System Admin?
+      return this.orderingService?.updateState(ids, OrderState.DONE, subject, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleFulfillmentFailed: (msg: Fulfillment, context: any, config: any, eventName: string) => {
+      if (msg?.reference?.instance_type !== this.orderingService.instance_type) return;
+      const ids = [msg?.reference?.instance_id];
+      const subject = {} as Subject; // System Admin?
+      return this.orderingService?.updateState(ids, OrderState.FAILED, subject, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleFulfillmentWithdrawn: (msg: Fulfillment, context: any, config: any, eventName: string) => {
+      if (msg?.reference?.instance_type !== this.orderingService.instance_type) return;
+      const ids = [msg?.reference.instance_id];
+      const subject = {} as Subject; // System Admin?
+      return this.orderingService?.updateState(ids, OrderState.CANCELLED, subject, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleFulfillmentCancelled: (msg: Fulfillment, context: any, config: any, eventName: string) => {
+      if (msg?.reference?.instance_type !== this.orderingService.instance_type) return;
+      const ids = [msg?.reference.instance_id];
+      const subject = {} as Subject; // System Admin?
+      return this.orderingService?.updateState(ids, OrderState.CANCELLED, subject, context).then(
+        () => this.logger.info(`Event ${eventName} handled.`),
+        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+      );
+    },
+    handleQueuedJob: (msg: any, context: any, config: any, eventName: string) => {
+      return this.serviceActions.get(msg?.type)(msg?.data?.payload, context, config, msg?.type).then(
+        () => this.logger.info(`Job ${msg?.type} done.`),
+        (err: any) => this.logger.error(`Job ${msg?.type} failed: ${err}`)
+      );
+    }
+  }
+
   async start(cfg?: any, logger?: any): Promise<any> {
     // Load config
     this._cfg = cfg = cfg ?? createServiceConfig(process.cwd());
 
     // create server
-    this.logger = logger = logger || createLogger(cfg.get('logger'));
+    this.logger = logger = logger ?? createLogger(cfg.get('logger'));
     this.server = new Server(cfg.get('server'), logger);
 
     // get database connection
@@ -131,140 +245,31 @@ export class Worker {
     await this.events.start();
     this.offsetStore = new OffsetStore(this.events, cfg, logger);
 
-    const topics = new Map<string, Topic>();
     const redisConfig = cfg.get('redis');
     redisConfig.db = this.cfg.get('redis:db-indexes:db-subject');
     this.redisClient = createClient(redisConfig);
-
-    const that = this;
-
-    const serviceActions = {
-      /* eslint-disable @typescript-eslint/no-use-before-define */
-      [CREATE_ORDERS]: (msg: OrderList, context: any, config: any, eventName: string) => {
-        return orderService.create(msg, context).then(
-          () => that.logger.info(`Event ${eventName} done.`),
-          err => that.logger.error(`Event ${eventName} failed: ${err}`)
-        );
-      },
-      [UPDATE_ORDERS]: (msg: OrderList, context: any, config: any, eventName: string) => {
-        return orderService.update(msg, context).then(
-          () => that.logger.info(`Event ${eventName} done.`),
-          err => that.logger.error(`Event ${eventName} failed: ${err}`)
-        );
-      },
-      [UPSERT_ORDERS]: (msg: OrderList, context: any, config: any, eventName: string) => {
-        return orderService.upsert(msg, context).then(
-          () => that.logger.info(`Event ${eventName} done.`),
-          err => that.logger.error(`Event ${eventName} failed: ${err}`)
-        );
-      },
-      [SUBMIT_ORDERS]: (msg: OrderList, context: any, config: any, eventName: string) => {
-        return orderService.submit(msg, context).then(
-          () => that.logger.info(`Event ${eventName} done.`),
-          err => that.logger.error(`Event ${eventName} failed: ${err}`)
-        );
-      },
-      [SHIP_ORDERS]: (msg: FulfillmentRequestList, context: any, config: any, eventName: string) => {
-        return orderService.createFulfillment(msg, context).then(
-          () => that.logger.info(`Event ${eventName} done.`),
-          err => that.logger.error(`Event ${eventName} failed: ${err}`)
-        );
-      },
-      [WITHDRAW_ORDERS]: (msg: OrderIdList, context: any, config: any, eventName: string) => {
-        return orderService.withdraw(msg, context).then(
-          () => that.logger.info(`Event ${eventName} done.`),
-          err => that.logger.error(`Event ${eventName} failed: ${err}`)
-        );
-      },
-      [CANCEL_ORDERS]: (msg: OrderIdList, context: any, config: any, eventName: string) => {
-        return orderService.cancel(msg, context).then(
-          () => that.logger.info(`Event ${eventName} done.`),
-          err => that.logger.error(`Event ${eventName} failed: ${err}`)
-        );
-      },
-      [DELETE_ORDERS]: (msg: any, context: any, config: any, eventName: string) => {
-        return orderService.delete(msg, context).then(
-          () => that.logger.info(`Event ${eventName} done.`),
-          err => that.logger.error(`Event ${eventName} failed: ${err}`)
-        );
-      },
-      [FULFILLMENT_SUBMITTED]: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-        if (msg?.reference?.instance_type !== orderService.instance_type) return;
-        const ids = [msg?.reference?.instance_id];
-        const subject = {} as Subject; // System Admin?
-        return orderService.updateState(ids, OrderState.IN_PROCESS, subject, context).then(
-          () => that.logger.info(`Event ${eventName} done.`),
-          err => that.logger.error(`Event ${eventName} failed: ${err}`)
-        );
-      },
-      [FULFILLMENT_INVALIDE]: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-        if (msg?.reference?.instance_type !== orderService.instance_type) return;
-        const ids = [msg?.reference?.instance_id];
-        const subject = {} as Subject; // System Admin?
-        return orderService.updateState(ids, OrderState.INVALID, subject, context).then(
-          () => that.logger.info(`Event ${eventName} done.`),
-          err => that.logger.error(`Event ${eventName} failed: ${err}`)
-        );
-      },
-      [FULFILLMENT_FULFILLED]: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-        if (msg?.reference?.instance_type !== orderService.instance_type) return;
-        const ids = [msg?.reference?.instance_id];
-        const subject = {} as Subject; // System Admin?
-        return orderService.updateState(ids, OrderState.DONE, subject, context).then(
-          () => that.logger.info(`Event ${eventName} done.`),
-          err => that.logger.error(`Event ${eventName} failed: ${err}`)
-        );
-      },
-      [FULFILLMENT_FAILED]: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-        if (msg?.reference?.instance_type !== orderService.instance_type) return;
-        const ids = [msg?.reference?.instance_id];
-        const subject = {} as Subject; // System Admin?
-        return orderService.updateState(ids, OrderState.FAILED, subject, context).then(
-          () => that.logger.info(`Event ${eventName} done.`),
-          err => that.logger.error(`Event ${eventName} failed: ${err}`)
-        );
-      },
-      [FULFILLMENT_CANCELLED]: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-        if (msg?.reference?.instance_type !== orderService.instance_type) return;
-        const ids = [msg?.reference.instance_id];
-        const subject = {} as Subject; // System Admin?
-        return orderService.updateState(ids, OrderState.CANCELLED, subject, context).then(
-          () => that.logger.info(`Event ${eventName} done.`),
-          err => that.logger.error(`Event ${eventName} failed: ${err}`)
-        );
-      },
-    };
-
-    const serviceEventListeners = (msg: any, context: any, config: any, eventName: string) => {
-      if (eventName === QUEUED_JOB) {
-        return serviceActions[msg?.type](msg?.data?.payload, context, config, msg?.type).then(
-          () => that.logger.info(`Job ${msg?.type} done.`),
-          (err: any) => that.logger.error(`Job ${msg?.type} failed: ${err}`)
-        );
-      }
-      else {
-        return serviceActions[eventName](msg, context, config, eventName);
-      }
-    };
 
     await Promise.all(Object.keys(kafkaCfg.topics).map(async key => {
       const topicName = kafkaCfg.topics[key].topic;
       const topic = await this.events.topic(topicName);
       const offsetValue: number = await this.offsetStore.getOffset(topicName);
       logger.info('subscribing to topic with offset value', topicName, offsetValue);
-      Object.values(kafkaCfg.topics[key]?.events ?? {}).forEach(
-        (eventName: string) => topic.on(
-          eventName,
-          serviceEventListeners[eventName],
-          { startingOffset: offsetValue }
-        )
+      Object.entries(kafkaCfg.topics[key]?.events ?? {}).forEach(
+        ([eventName, handler]) => {
+          this.serviceActions[eventName as string] = this.handlers[handler as string];
+          topic.on(
+            eventName as string,
+            this.handlers[handler as string],
+            { startingOffset: offsetValue }
+          )
+        }
       );
-      topics.set(key, topic);
+      this.topics.set(key, topic);
     }));
 
     // ordering command interface
     logger.verbose('Setting up command interface services');
-    const cis = new OrderingCommandInterface(
+    this.orderingCommandInterface = new OrderingCommandInterface(
       this.server,
       cfg,
       logger,
@@ -274,8 +279,8 @@ export class Worker {
 
     // ordering service
     logger.verbose('Setting up ordering services');
-    const orderService = new OrderingService(
-      topics.get('ordering.resource'),
+    this.orderingService = new OrderingService(
+      this.topics.get('ordering.resource'),
       db,
       cfg,
       logger
@@ -286,12 +291,12 @@ export class Worker {
 
     await this.server.bind(serviceNamesCfg.ordering, {
       service: OrderServiceDefinition,
-      implementation: orderService
+      implementation: this.orderingService
     } as BindConfig<OrderServiceDefinition>);
 
     await this.server.bind(serviceNamesCfg.cis, {
       service: CommandInterfaceServiceDefinition,
-      implementation: cis
+      implementation: this.orderingCommandInterface,
     } as BindConfig<CommandInterfaceServiceDefinition>);
 
     // Add reflection service
@@ -307,12 +312,15 @@ export class Worker {
 
     await this.server.bind(serviceNamesCfg.health, {
       service: HealthDefinition,
-      implementation: new Health(cis, {
-        logger,
-        cfg,
-        dependencies: [],
-        readiness: async () => !!await (db as Arango).db.version()
-      })
+      implementation: new Health(
+        this.orderingCommandInterface,
+        {
+          logger,
+          cfg,
+          dependencies: [],
+          readiness: async () => !!await (db as Arango).db.version()
+        }
+      )
     } as BindConfig<HealthDefinition>);
 
     // start server
