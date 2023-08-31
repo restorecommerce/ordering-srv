@@ -22,7 +22,7 @@ import {
   CommandInterfaceServiceDefinition,
   protoMetadata as CommandInterfaceMeta,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/commandinterface';
-import { createServiceConfig } from '@restorecommerce/service-config';
+import { ServiceConfig, createServiceConfig } from '@restorecommerce/service-config';
 import { createLogger } from '@restorecommerce/logger';
 import { OrderingService } from './service';
 import { RedisClientType as RedisClient, createClient } from 'redis';
@@ -41,7 +41,7 @@ registerProtoMeta(
 );
 
 export class Worker {
-  private _cfg: any;
+  private _cfg: ServiceConfig;
   private _offsetStore: OffsetStore;
   private _server: Server;
   private _events: Events;
@@ -116,8 +116,8 @@ export class Worker {
 
   protected readonly topics = new Map<string, Topic>();
   protected readonly serviceActions = new Map<string, ((msg: any, context: any, config: any, eventName: string) => Promise<void>)>();
-  
-  protected readonly handlers = { 
+
+  protected readonly handlers = {
     handleCreateOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
       return this.orderingService?.create(msg, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
@@ -167,7 +167,7 @@ export class Worker {
       );
     },
     handleFulfillmentSubmitted: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      if (msg?.reference?.instance_type !== this.orderingService.instance_type) return;
+      if (msg?.reference?.instance_type !== this.orderingService.instanceType) return;
       const ids = [msg?.reference?.instance_id];
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.IN_PROCESS, subject, context).then(
@@ -176,7 +176,7 @@ export class Worker {
       );
     },
     handleFulfillmentInvalide: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      if (msg?.reference?.instance_type !== this.orderingService.instance_type) return;
+      if (msg?.reference?.instance_type !== this.orderingService.instanceType) return;
       const ids = [msg?.reference?.instance_id];
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.INVALID, subject, context).then(
@@ -185,7 +185,7 @@ export class Worker {
       );
     },
     handleFulfillmentFulfilled: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      if (msg?.reference?.instance_type !== this.orderingService.instance_type) return;
+      if (msg?.reference?.instance_type !== this.orderingService.instanceType) return;
       const ids = [msg?.reference?.instance_id];
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.DONE, subject, context).then(
@@ -194,7 +194,7 @@ export class Worker {
       );
     },
     handleFulfillmentFailed: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      if (msg?.reference?.instance_type !== this.orderingService.instance_type) return;
+      if (msg?.reference?.instance_type !== this.orderingService.instanceType) return;
       const ids = [msg?.reference?.instance_id];
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.FAILED, subject, context).then(
@@ -203,7 +203,7 @@ export class Worker {
       );
     },
     handleFulfillmentWithdrawn: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      if (msg?.reference?.instance_type !== this.orderingService.instance_type) return;
+      if (msg?.reference?.instance_type !== this.orderingService.instanceType) return;
       const ids = [msg?.reference.instance_id];
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.CANCELLED, subject, context).then(
@@ -212,7 +212,7 @@ export class Worker {
       );
     },
     handleFulfillmentCancelled: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      if (msg?.reference?.instance_type !== this.orderingService.instance_type) return;
+      if (msg?.reference?.instance_type !== this.orderingService.instanceType) return;
       const ids = [msg?.reference.instance_id];
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.CANCELLED, subject, context).then(
@@ -226,7 +226,7 @@ export class Worker {
         (err: any) => this.logger.error(`Job ${msg?.type} failed: ${err}`)
       );
     }
-  }
+  };
 
   async start(cfg?: any, logger?: any): Promise<any> {
     // Load config
@@ -261,7 +261,7 @@ export class Worker {
             eventName as string,
             this.handlers[handler as string],
             { startingOffset: offsetValue }
-          )
+          );
         }
       );
       this.topics.set(key, topic);

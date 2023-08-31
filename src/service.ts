@@ -1,3 +1,5 @@
+import { Logger } from 'winston';
+import { ServiceConfig } from '@restorecommerce/service-config';
 import {
   Client,
   createClient,
@@ -88,6 +90,7 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/amount';
 import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth';
 import { COUNTRY_CODES_EU } from './utils';
+
 
 export type OrderMap = { [key: string]: OrderResponse };
 export type ProductMap = { [key: string]: ProductResponse };
@@ -191,19 +194,23 @@ export class OrderingService
   protected readonly fulfillment_product_service: Client<FulfillmentProductServiceDefinition>;
   protected readonly invoice_service: Client<InvoiceServiceDefinition>;
 
-  get entity_name() {
+  get entityName() {
     return this.name;
   }
 
-  get collection_name() {
+  get collectionName() {
     return this.resourceapi.resourceName;
+  }
+
+  get instanceType() {
+    return this.instance_type;
   }
 
   constructor(
     readonly topic: Topic,
     readonly db: DatabaseProvider,
-    readonly cfg: any,
-    readonly logger: any,
+    readonly cfg: ServiceConfig,
+    readonly logger: Logger,
   ) {
     super(
       cfg.get('database:main:entities:0') ?? 'order',
@@ -673,7 +680,7 @@ export class OrderingService
             {
               field: 'reference.instance_type',
               operation: Filter_Operation.eq,
-              value: this.instance_type,
+              value: this.instanceType,
             },
             {
               field: 'reference.instance_id',
@@ -760,7 +767,7 @@ export class OrderingService
 
   async getById<T>(
     request_id: string,
-    map: { [id:string]: T },
+    map: { [id: string]: T },
     id: string
   ): Promise<T> {
     if (id in map) {
@@ -778,7 +785,7 @@ export class OrderingService
 
   async getByIds<T>(
     request_id: string,
-    map: { [id:string]: T },
+    map: { [id: string]: T },
     ids: string[]
   ): Promise<T[]> {
     return Promise.all(ids.map(
@@ -950,7 +957,7 @@ export class OrderingService
         ).then(
           country => country.payload
         );
-        
+
         order.items.forEach(
           (item) => {
             const product = product_map[item.product_id]?.payload;
@@ -1202,7 +1209,7 @@ export class OrderingService
             }
           }
         }
-      )
+      );
 
       return {
         items: Object.values(responseMap),
@@ -1249,7 +1256,7 @@ export class OrderingService
       (a, b) => {
         a[b.order_id] = {
           reference: {
-            instance_type: this.instance_type,
+            instance_type: this.instanceType,
             instance_id: b.order_id,
           },
           solutions: null,
@@ -1280,7 +1287,7 @@ export class OrderingService
         if (!order) {
           response.status = this.createStatusCode(
             item.order_id,
-            this.entity_name,
+            this.entityName,
             this.status_codes.NOT_FOUND,
           );
           return false;
@@ -1309,7 +1316,7 @@ export class OrderingService
         if (items.length === 0) {
           response.status = this.createStatusCode(
             item.order_id,
-            this.entity_name,
+            this.entityName,
             this.status_codes.NO_PHYSICAL_ITEM,
           );
         }
@@ -1425,7 +1432,7 @@ export class OrderingService
               {
                 packaging: {
                   reference: {
-                    instance_type: this.instance_type,
+                    instance_type: this.instanceType,
                     instance_id: item.order_id,
                   },
                   parcels: solution.solutions[0].parcels,
@@ -1575,7 +1582,7 @@ export class OrderingService
             payload: null,
             status: master?.status ?? this.createStatusCode(
               item.sections[0]?.order_id,
-              this.entity_name,
+              this.entityName,
               this.status_codes.NOT_FOUND,
             )
           };
@@ -1589,7 +1596,7 @@ export class OrderingService
               payload: null,
               status: order?.status ?? this.createStatusCode(
                 section.order_id,
-                this.entity_name,
+                this.entityName,
                 this.status_codes.NOT_FOUND,
               )
             };
@@ -1617,7 +1624,7 @@ export class OrderingService
             shop_id: master.payload.shop_id,
             references: item.sections.map(
               section => ({
-                instance_type: this.instance_type,
+                instance_type: this.instanceType,
                 instance_id: section.order_id,
               })
             ),
