@@ -38,9 +38,6 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Wait for Kafka 60s
-        run: sleep 60
-
       - name: Test
         run: npm run test && npm run lcov-report
 

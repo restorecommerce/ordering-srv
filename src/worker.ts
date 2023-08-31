@@ -228,7 +228,7 @@ export class Worker {
     }
   };
 
-  async start(cfg?: any, logger?: any): Promise<any> {
+  async start(cfg?: ServiceConfig, logger?: Logger): Promise<any> {
     // Load config
     this._cfg = cfg = cfg ?? createServiceConfig(process.cwd());
 
@@ -256,12 +256,18 @@ export class Worker {
       logger.info('subscribing to topic with offset value', topicName, offsetValue);
       await Promise.all(Object.entries(kafkaCfg.topics[key]?.events ?? {}).map(
         ([eventName, handler]) => {
-          this.serviceActions[eventName as string] = this.handlers[handler as string];
-          return topic.on(
-            eventName as string,
-            this.handlers[handler as string],
-            { startingOffset: offsetValue }
-          );
+          const handle = this.handlers[handler as string];
+          if (!!handle) {
+            this.serviceActions[eventName as string] = handle;
+            return topic.on(
+              eventName as string,
+              handle,
+              { startingOffset: offsetValue }
+            );
+          }
+          else {
+            logger.warn(`Topic Listener with handle name ${handler} not supported!`);
+          }
         }
       ));
       this.topics.set(key, topic);
