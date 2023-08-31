@@ -8,9 +8,17 @@ import {
 } from '@restorecommerce/grpc-client';
 import { ServiceConfig } from '@restorecommerce/service-config';
 import {
+  AuthZAction,
+  accessRequest,
+  ACSClientContext,
+  DecisionResponse,
+  Operation,
+  PolicySetRQResponse,
+  Resource,
+} from '@restorecommerce/acs-client';
+import {
   UserServiceDefinition
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/user';
-
 /* eslint-disable prefer-arrow-functions/prefer-arrow-functions */
 
 export function access_controlled_service<T extends { new (...args: any): {} }>(baseClass: T) {
@@ -35,14 +43,14 @@ export function access_controlled_service<T extends { new (...args: any): {} }>(
   };
 }
 
-export type ACSClientContextFactory<T, R> = (self: T, request: R, context: any) => ACSClientContext;
-export type ResourceFactory<T, R> = (self: T, request: R, context: any) => Resource[];
+export type ACSClientContextFactory = (self: any, ...args: any) => ACSClientContext;
+export type ResourceFactory = (self: any, ...args: any) => Resource[];
 
-export function access_controlled_function<T, R>(
+export function access_controlled_function(
   action: AuthZAction,
   operation: Operation,
-  context: ACSClientContext | ACSClientContextFactory<T, R> = undefined,
-  resource: Resource[] | ResourceFactory<T, R> = undefined,
+  context: ACSClientContext | ACSClientContextFactory | undefined = undefined,
+  resource: Resource[] | ResourceFactory | undefined = undefined,
   useCache = true
 ) {
   return function (
@@ -53,6 +61,16 @@ export function access_controlled_function<T, R>(
     const method = descriptor.value!;
     
     descriptor.value = function () {
+
+      if (typeof(context) === 'function') {
+        context = context(this, ...arguments);
+      }
+
+      if (typeof(resource) === 'function') {
+        resource = resource(this, ...arguments);
+      }
+
+
       //throw new Error("Access Controlled!");
       return method.apply(this, arguments);
     };

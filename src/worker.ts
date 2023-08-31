@@ -31,9 +31,9 @@ import { Logger } from 'winston';
 import { BindConfig } from '@restorecommerce/chassis-srv/lib/microservice/transport/provider/grpc';
 import { HealthDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated-server/grpc/health/v1/health';
 import { ServerReflectionService } from 'nice-grpc-server-reflection';
-import { OrderingCommandInterface } from './command_interface';
 import { Fulfillment } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment';
 import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth';
+import { OrderingCommandInterface } from './command_interface';
 
 registerProtoMeta(
   OrderMeta,
