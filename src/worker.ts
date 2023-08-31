@@ -142,7 +142,7 @@ export class Worker {
         err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
       );
     },
-    handleShipOrders: (msg: FulfillmentRequestList, context: any, config: any, eventName: string) => {
+    handleFulfillOrders: (msg: FulfillmentRequestList, context: any, config: any, eventName: string) => {
       return this.orderingService?.createFulfillment(msg, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
         err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
@@ -270,6 +270,7 @@ export class Worker {
           }
         }
       ));
+      await topic.consumer?.run();
       this.topics.set(key, topic);
     }));
 
