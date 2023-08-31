@@ -254,16 +254,16 @@ export class Worker {
       const topic = await this.events.topic(topicName);
       const offsetValue: number = await this.offsetStore.getOffset(topicName);
       logger.info('subscribing to topic with offset value', topicName, offsetValue);
-      Object.entries(kafkaCfg.topics[key]?.events ?? {}).forEach(
+      await Promise.all(Object.entries(kafkaCfg.topics[key]?.events ?? {}).map(
         ([eventName, handler]) => {
           this.serviceActions[eventName as string] = this.handlers[handler as string];
-          topic.on(
+          return topic.on(
             eventName as string,
             this.handlers[handler as string],
             { startingOffset: offsetValue }
           );
         }
-      );
+      ));
       this.topics.set(key, topic);
     }));
 
