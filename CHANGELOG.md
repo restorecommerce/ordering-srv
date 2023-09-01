@@ -1,3 +1,8 @@
+## 0.0.6 (September 1st, 2023)
+
+- updated dependencies
+- refactor entire service for a first pre-version
+
 ## 0.0.5 (March 15th, 2021)
 
 - updated dependencies
