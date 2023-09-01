@@ -175,7 +175,7 @@ export class Worker {
         err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
       );
     },
-    handleFulfillmentInvalide: (msg: Fulfillment, context: any, config: any, eventName: string) => {
+    handleFulfillmentInvalid: (msg: Fulfillment, context: any, config: any, eventName: string) => {
       if (msg?.reference?.instance_type !== this.orderingService.instanceType) return;
       const ids = [msg?.reference?.instance_id];
       const subject = {} as Subject; // System Admin?
@@ -231,10 +231,7 @@ export class Worker {
   async start(cfg?: ServiceConfig, logger?: Logger): Promise<any> {
     // Load config
     this._cfg = cfg = cfg ?? createServiceConfig(process.cwd());
-
-    // create server
     this.logger = logger = logger ?? createLogger(cfg.get('logger'));
-    this.server = new Server(cfg.get('server'), logger);
 
     // get database connection
     const db = await database.get(cfg.get('database:main'), logger);
@@ -244,15 +241,17 @@ export class Worker {
     this.events = new Events(kafkaCfg, logger);
     await this.events.start();
     this.offsetStore = new OffsetStore(this.events, cfg, logger);
+    logger.info('Event Groupes started');
 
     const redisConfig = cfg.get('redis');
     redisConfig.db = this.cfg.get('redis:db-indexes:db-subject');
     this.redisClient = createClient(redisConfig);
+    await this.redisClient.connect();
 
     await Promise.all(Object.keys(kafkaCfg.topics).map(async key => {
       const topicName = kafkaCfg.topics[key].topic;
       const topic = await this.events.topic(topicName);
-      const offsetValue: number = await this.offsetStore.getOffset(topicName);
+      const offsetValue = await this.offsetStore.getOffset(topicName);
       logger.info('subscribing to topic with offset value', topicName, offsetValue);
       await Promise.all(Object.entries(kafkaCfg.topics[key]?.events ?? {}).map(
         ([eventName, handler]) => {
@@ -273,6 +272,9 @@ export class Worker {
       await topic.consumer?.run();
       this.topics.set(key, topic);
     }));
+
+    // create server
+    this.server = new Server(cfg.get('server'), logger);
 
     // ordering command interface
     logger.verbose('Setting up command interface services');

@@ -33,7 +33,7 @@ export async function connectEvents(): Promise<Events> {
 export async function connectTopics(events: Events, resourceName: string): Promise<Topic> {
   const topic = cfg.get(`events:kafka:topics:${resourceName}:topic`);
   should.exist(topic);
-  return events.topic(topic);
+  return await events.topic(topic);
 }
 
 export async function mockServices(configs: { [key: string]: any }) {
