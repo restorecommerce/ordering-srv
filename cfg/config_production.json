@@ -53,22 +53,22 @@
       "address": "resource-srv:50051"
     },
     "contact_point": {
-      "address": "resource-srv:50067"
+      "address": "resource-srv:50051"
     },
     "tax": {
-      "address": "resource-srv:50070"
+      "address": "resource-srv:50051"
     },
     "tax_type": {
-      "address": "resource-srv:50071"
+      "address": "resource-srv:50051"
     },
     "customer": {
-      "address": "resource-srv:50072"
+      "address": "resource-srv:50051"
     },
     "shop": {
-      "address": "resource-srv:50073"
+      "address": "resource-srv:50051"
     },
     "invoice": {
-      "address": "invoice-srv:50077"
+      "address": "invoice-srv:50051"
     },
     "graph-srv": {
       "address": "resource-srv:50051"

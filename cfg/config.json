@@ -170,7 +170,7 @@
   },
   "client": {
     "order": {
-      "address": "localhost:50065"
+      "address": "localhost:50051"
     },
     "product": {
       "address": "localhost:50066",
