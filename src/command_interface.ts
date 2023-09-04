@@ -4,12 +4,13 @@ import {
   Server,
   CommandInterface,
 } from '@restorecommerce/chassis-srv';
+import { ServiceConfig } from '@restorecommerce/service-config';
 import { Events } from '@restorecommerce/kafka-client';
 
 export class OrderingCommandInterface extends CommandInterface {
   constructor(
     server: Server,
-    cfg: any,
+    cfg: ServiceConfig,
     logger: Logger,
     events: Events,
     redisClient: RedisClient

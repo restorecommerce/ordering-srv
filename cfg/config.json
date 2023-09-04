@@ -125,7 +125,16 @@
       },
       "topics": {
         "command": {
-          "topic": "io.restorecommerce.command"
+          "topic": "io.restorecommerce.command",
+          "events": {
+            "healthCheckCommand": "handleCommand",
+            "restoreCommand": "handleCommand",
+            "resetCommand": "handleCommand",
+            "versionCommand": "handleCommand",
+            "configUpdateCommand": "handleCommand",
+            "setApiKeyCommand": "handleCommand",
+            "flushCacheCommand": "handleCommand"
+          }
         },
         "jobs": {
           "topic": "io.restorecommerce.jobs",
@@ -325,7 +334,7 @@
       {
         "name": "grpcOrdering",
         "provider": "grpc",
-        "addr": "0.0.0.0:50065"
+        "addr": "0.0.0.0:50051"
       }
     ]
   },

@@ -115,7 +115,7 @@ export class Worker {
   }
 
   protected readonly topics = new Map<string, Topic>();
-  protected readonly serviceActions = new Map<string, ((msg: any, context: any, config: any, eventName: string) => Promise<void>)>();
+  protected readonly serviceActions = new Map<string, ((msg: any, context: any, config: any, eventName: string) => Promise<any>)>();
 
   protected readonly handlers = {
     handleCreateOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
@@ -225,6 +225,9 @@ export class Worker {
         () => this.logger.info(`Job ${msg?.type} done.`),
         (err: any) => this.logger.error(`Job ${msg?.type} failed: ${err}`)
       );
+    },
+    handleCommand: (msg: any, context: any, config: any, eventName: string) => {
+      return this.orderingCommandInterface.command(msg, context);
     }
   };
 
@@ -308,6 +311,19 @@ export class Worker {
       implementation: this.orderingCommandInterface,
     } as BindConfig<CommandInterfaceServiceDefinition>);
 
+    await this.server.bind(serviceNamesCfg.health, {
+      service: HealthDefinition,
+      implementation: new Health(
+        this.orderingCommandInterface,
+        {
+          logger,
+          cfg,
+          dependencies: [],
+          readiness: () => (db as Arango).db.version().then(v => !!v)
+        }
+      )
+    } as BindConfig<HealthDefinition>);
+
     // Add reflection service
     const reflectionServiceName = serviceNamesCfg.reflection;
     const reflectionService = buildReflectionService([
@@ -319,20 +335,15 @@ export class Worker {
       implementation: reflectionService
     });
 
-    await this.server.bind(serviceNamesCfg.health, {
-      service: HealthDefinition,
-      implementation: new Health(
-        this.orderingCommandInterface,
-        {
-          logger,
-          cfg,
-          dependencies: [],
-          readiness: async () => !!await (db as Arango).db.version()
-        }
-      )
-    } as BindConfig<HealthDefinition>);
-
     // start server
+    await (db as Arango).db.version().then(
+      v => this.logger.verbose(v),
+      e => this.logger.error(e)
+    );
+
+    this.server.on('serving', (...args: any) => {
+      this.logger.info('server is ready and serving');
+    });
     await this.server.start();
     this.logger.info('server started successfully');
   }
