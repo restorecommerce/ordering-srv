@@ -1,4 +1,4 @@
-import * as Cluster from '@restorecommerce/cluster-service';
+import { ClusterService as Cluster } from '@restorecommerce/cluster-service';
 import { createServiceConfig } from '@restorecommerce/service-config';
 
 const cfg = createServiceConfig(process.cwd());
