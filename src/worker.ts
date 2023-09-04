@@ -336,24 +336,24 @@ export class Worker {
     });
 
     // start server
-    await (db as Arango).db.version().then(
-      v => this.logger.verbose(v),
-      e => this.logger.error(e)
-    );
-
-    this.server.on('serving', (...args: any) => {
-      this.logger.info('server is ready and serving');
-    });
     await this.server.start();
     this.logger.info('server started successfully');
   }
 
   async stop(): Promise<any> {
     this.logger.info('Shutting down');
-    await Promise.all([
-      this.server?.stop(),
-      this.events?.stop(),
-      this.offsetStore?.stop(),
+    await Promise.allSettled([
+      this.events?.stop().catch(
+        err => this.logger.error(err)
+      )
+    ]);
+    await Promise.allSettled([
+      this.server?.stop().catch(
+        err => this.logger.error(err)
+      ),
+      this.offsetStore?.stop().catch(
+        err => this.logger.error(err)
+      ),
     ]);
   }
 }
