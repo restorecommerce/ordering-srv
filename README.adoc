@@ -1,6 +1,6 @@
 = Ordering Service
 
-https://travis-ci.org/restorecommerce/ordering-srv?branch=master[image:https://img.shields.io/travis/restorecommerce/ordering-srv/master.svg?style=flat-square[Build Status]]
+https://github.com/restorecommerce/ordering-srv/actions/workflows/build.yaml[image:https://img.shields.io/github/actions/workflow/status/restorecommerce/ordering-srv/build.yaml?style=flat-square[Build Status]]
 https://depfu.com/repos/github/restorecommerce/ordering-srv?branch=master[image:https://img.shields.io/depfu/dependencies/github/restorecommerce/ordering-srv?style=flat-square[Dependencies]]
 https://coveralls.io/github/restorecommerce/ordering-srv?branch=master[image:https://img.shields.io/coveralls/github/restorecommerce/ordering-srv/master.svg?style=flat-square[Coverage Status]]
 
@@ -9,6 +9,6 @@ A microservice for order management.
 Please consult the documentation for using it:
 
 - *link:https://docs.restorecommerce.io/ordering-srv/index.html[Usage]*
-- *link:https://docs.restorecommerce.io/architecture/index.html[General Architecture]*
+- *link:https://docs.restorecommerce.io/architecture/index.html[Restorecommerce Architecture]*
 
 Part of link:https://github.com/restorecommerce[Restorecommerce].
