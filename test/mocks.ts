@@ -1,4 +1,8 @@
-import { 
+import {
+  Response,
+  ReverseQuery,
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/access_control';
+import {
   OrderList,
   OrderState,
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order';
@@ -28,6 +32,9 @@ import {
   PackingSolutionListResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment_product';
 import {
+  UserListResponse, UserResponse, UserType
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/user';
+import {
   ShopListResponse, ShopResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/shop';
 import {
@@ -40,8 +47,44 @@ import {
 import { OperationStatus } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/status';
 import { InvoiceListResponse, PaymentState } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/invoice';
 import { DeepPartial } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/resource_base';
+import { Effect } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/rule';
+import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/auth';
+import { getRedisInstance, logger } from '.';
 
 type Address = ShippingAddress & BillingAddress;
+
+const meta = {
+  modifiedBy: 'SYSTEM',
+  acls: [],
+  created: new Date(),
+  modified: new Date(),
+  owners: [
+    {
+      id: 'urn:restorecommerce:acs:names:ownerIndicatoryEntity',
+      value: 'urn:restorecommerce:acs:model:organization.Organization',
+      attributes: [
+        {
+          id: 'urn:restorecommerce:acs:names:ownerInstance',
+          value: 'r-ug',
+          attributes: []
+        }
+      ]
+    },
+  ]
+};
+
+const subjects: { [key: string]: Subject } = {
+  superadmin: {
+    id: 'superadmin',
+    scope: 'r-ug',
+    token: 'superadmin',
+  },
+  admin: {
+    id: 'admin',
+    scope: 'r-ug',
+    token: 'admin',
+  },
+};
 
 const operationStatus: OperationStatus = {
   code: 200,
@@ -259,15 +302,15 @@ const shops = [
   }
 ] as ShopResponse[];
 
-const validOrders: OrderList[] = [
-  {
+const validOrders: { [key: string]: OrderList } = {
+  'as superadmin': {
     items: [
       {
         id: 'validOrder_1',
         items: [
           {
             productId: products[0]?.payload?.id,
-            variantId: products[0]?.payload?.product?.physical?.variants[0].id,
+            variantId: products[0]?.payload?.product?.physical?.variants?.[0]?.id,
             quantity: 4,
           }
         ],
@@ -287,45 +330,56 @@ const validOrders: OrderList[] = [
         },
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
-        meta: {
-          modifiedBy: 'SYSTEM',
-          acls: [],
-          created: new Date(),
-          modified: new Date(),
-          owners: [
-            {
-              id: 'urn:restorecommerce:acs:names:ownerIndicatoryEntity',
-              value: 'urn:restorecommerce:acs:model:user.User',
-              attributes: []
-            },
-            {
-              id: 'urn:restorecommerce:acs:names:ownerInstance',
-              value: 'UserID',
-              attributes: []
-            }
-          ]
-        }
+        meta,
       }
     ],
     totalCount: 1,
-    subject: {
-      id: '',
-      scope: '',
-      token: '',
-      unauthenticated: true
-    }
-  }
-];
+    subject: subjects.superadmin,
+  },
+  'as admin': {
+    items: [
+      {
+        id: 'validOrder_2',
+        items: [
+          {
+            productId: products[0]?.payload?.id,
+            variantId: products[0]?.payload?.product?.physical?.variants?.[0]?.id,
+            quantity: 4,
+          }
+        ],
+        userId: 'user_1',
+        customerId: 'customer_1',
+        shopId: 'shop_1',
+        orderState: OrderState.CREATED,
+        totalAmounts: [],
+        notificationEmail: 'user@test.spec',
+        packagingPreferences: {
+          couriers: [{
+            id: 'name',
+            value: 'DHL',
+            attributes: [],
+          }],
+          options: [],
+        },
+        billingAddress: residentialAddresses[0],
+        shippingAddress: residentialAddresses[0],
+        meta,
+      }
+    ],
+    totalCount: 1,
+    subject: subjects.admin,
+  },
+};
 
-const invalidOrders: OrderList[] = [
-  {
+const invalidOrders: { [key: string]: OrderList } = {
+  'as superadmin': {
     items: [
       {
         id: 'invalidOrder_1',
         items: [
           {
             productId: products[0]?.payload?.id,
-            variantId: products[0]?.payload?.product?.physical?.variants[0].id,
+            variantId: products[0]?.payload?.product?.physical?.variants?.[0]?.id,
             quantity: 4,
           }
         ],
@@ -345,35 +399,165 @@ const invalidOrders: OrderList[] = [
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
         orderState: OrderState.CREATED,
-        meta: {
-          modifiedBy: 'SYSTEM',
-          created: new Date(),
-          modified: new Date(),
-          acls: [],
-          owners: [
-            {
-              id: 'urn:restorecommerce:acs:names:ownerIndicatoryEntity',
-              value: 'urn:restorecommerce:acs:model:user.User',
-              attributes: []
-            },
-            {
-              id: 'urn:restorecommerce:acs:names:ownerInstance',
-              value: 'UserID',
-              attributes: []
-            }
-          ]
-        }
+        meta,
       }
     ],
     totalCount: 1,
-    subject: {
-      id: '',
-      scope: '',
-      token: '',
-      unauthenticated: true
+    subject: subjects.superadmin,
+  },
+};
+
+const users: { [key: string]: UserResponse } = {
+  superadmin: {
+    payload: {
+      id: 'superadmin',
+      name: 'manuel.mustersuperadmin',
+      first_name: 'Manuel',
+      last_name: 'Mustersuperadmin',
+      email: 'manuel.mustersuperadmin@restorecommerce.io',
+      password: 'A$1rcadminpw',
+      default_scope: 'r-ug',
+      role_associations: [
+        {
+          role: 'superadministrator-r-id',
+          id: 'superadmin-1-administrator-r-id',
+          attributes: [],
+        },
+      ],
+      locale_id: 'de-de',
+      timezone_id: 'europe-berlin',
+      active: true,
+      user_type: UserType.ORG_USER,
+      tokens: [
+        {
+          token: 'superadmin',
+        }
+      ],
+      meta,
+    },
+    status: {
+      id: 'superadmin',
+      code: 200,
+      message: 'OK',
     }
-  }
-];
+  },
+  admin: {
+    payload: {
+      id: 'admin',
+      name: 'manuel.musteradmin',
+      first_name: 'Manuel',
+      last_name: 'Musteradmin',
+      email: 'manuel.musteradmin@restorecommerce.io',
+      password: 'A$1rcadminpw',
+      default_scope: 'r-ug',
+      role_associations: [
+        {
+          role: 'administrator-r-id',
+          id: 'admin-1-administrator-r-id',
+          attributes: [
+
+          ],
+        },
+      ],
+      locale_id: 'de-de',
+      timezone_id: 'europe-berlin',
+      active: true,
+      user_type: UserType.ORG_USER,
+      tokens: [
+        {
+          token: 'admin',
+        }
+      ],
+      meta,
+    },
+    status: {
+      id: 'admin',
+      code: 200,
+      message: 'OK',
+    }
+  },
+};
+
+const hierarchicalScopes = {
+  superadmin: [
+    {
+      id: 'r-ug',
+      role: 'superadministrator-r-id',
+    }
+  ],
+  admin: [
+    {
+      id: 'r-ug',
+      role: 'administrator-r-id',
+    }
+  ]
+};
+
+const whatIsAllowed: { [key: string]: ReverseQuery } = {
+  superadmin: {
+    policySets: [
+      {
+        id: 'policy_set',
+        combiningAlgorithm: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
+        effect: Effect.PERMIT,
+        policies: [
+          {
+            id: 'policy_superadmin_permit_all',
+            combiningAlgorithm: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
+            effect: Effect.PERMIT,
+            target: {
+              subjects: [
+                {
+                  id: 'urn:restorecommerce:acs:names:role',
+                  value: 'superadministrator-r-id',
+                },
+              ],
+            },
+            rules: [{
+              effect: Effect.PERMIT,
+            }],
+            hasRules: true,
+          },
+        ]
+      },
+    ],
+    operationStatus
+  },
+  admin: {
+    policySets: [
+      {
+        id: 'policy_set',
+        combiningAlgorithm: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
+        effect: Effect.PERMIT,
+        policies: [
+          {
+            id: 'order_policy_admin',
+            combiningAlgorithm: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
+            effect: Effect.PERMIT,
+            rules: [{
+              id: 'admin_can_do_all_by_scope',
+              effect: Effect.PERMIT,
+              target: {
+                subjects: [
+                  {
+                    id: 'urn:restorecommerce:acs:names:role',
+                    value: 'administrator-r-id',
+                  },
+                  {
+                    id: 'urn:restorecommerce:acs:names:roleScopingEntity',
+                    value: 'urn:restorecommerce:acs:model:organization.Organization',
+                  },
+                ],
+              },
+            }],
+            hasRules: true
+          },
+        ]
+      },
+    ],
+    operationStatus
+  },
+};
 
 export const samples = {
   residentialAddresses,
@@ -388,6 +572,48 @@ export const samples = {
 };
 
 export const rules = {
+  'acs-srv': {
+    isAllowed: (
+      call: any,
+      callback: (error: any, response: DeepPartial<Response>) => void,
+    ) => callback(null, {}),
+    whatIsAllowed: (
+      call: any,
+      callback: (error: any, response: DeepPartial<ReverseQuery>) => void,
+    ) => callback(null, whatIsAllowed[
+      call.request?.target?.subjects?.find(
+        (subject: any) => subject?.id === 'urn:oasis:names:tc:xacml:1.0:subject:subject-id'
+      )?.value
+    ]),
+  },
+  user: {
+    read: (
+      call: any,
+      callback: (error: any, response: DeepPartial<UserListResponse>) => void,
+    ) => callback(null, {}),
+    findByToken: (
+      call: any,
+      callback: (error: any, response: DeepPartial<UserResponse>) => void,
+    ) => {
+      getRedisInstance().then(
+        async client => {
+          const subject = users[call.request.token];
+          await client.set(
+            `cache:${ subject.payload?.id }:subject`,
+            JSON.stringify(subject.payload),
+          );
+          await client.set(
+            `cache:${ subject.payload?.id }:hrScopes`,
+            JSON.stringify(hierarchicalScopes[call.request.token]),
+          );
+          return subject;
+        },
+      ).then(
+        subject => callback(null, subject),
+        error => logger.error(error),
+      );
+    }
+  },
   shop: {
     read: (
       call: any,
@@ -569,6 +795,55 @@ export const rules = {
           ],
           status: {
             id: 'validOrder_1',
+            code: 200,
+            message: 'OK',
+          }
+        },
+        {
+          reference: {
+            instanceType: 'unr:restorecommerce:io:Order',
+            instanceId: 'validOrder_2',
+          },
+          solutions: [
+            {
+              amounts: [
+                {
+                  currencyId: 'currency_1',
+                  gross: 2.0,
+                  net: 2.38,
+                  vats: [
+                    {
+                      taxId: 'tax_1',
+                      vat: 0.38,
+                    }
+                  ]
+                },
+              ],
+              parcels: [
+                {
+                  id: '1',
+                  items: [
+                      {
+                      productId: 'physicalProduct_1',
+                      variantId: '1',
+                      package: {
+                        sizeInCm: {
+                          height: 10,
+                          length: 20,
+                          width: 15,
+                        },
+                        weightInKg: 0.58,
+                        rotatable: true,
+                      },
+                      quantity: 4,
+                    },
+                  ],
+                }
+              ]
+            }
+          ],
+          status: {
+            id: 'validOrder_2',
             code: 200,
             message: 'OK',
           }

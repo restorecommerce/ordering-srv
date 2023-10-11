@@ -1,11 +1,16 @@
 import { Logger } from 'winston';
-import { ServiceConfig } from '@restorecommerce/service-config';
+import { Provider as ServiceConfig } from 'nconf';
 import {
   Client,
   createClient,
   createChannel,
   GrpcClientConfig
 } from '@restorecommerce/grpc-client';
+import {
+  ACSClientContext,
+  AuthZAction,
+  Operation
+} from '@restorecommerce/acs-client';
 import {
   ResourcesAPIBase,
   ServiceBase,
@@ -22,7 +27,7 @@ import {
   OrderIdList,
   OrderListResponse,
   OrderServiceImplementation,
-  InvoiceRequestList,
+  OrderInvoiceRequestList,
   FulfillmentInvoiceMode,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order';
 import {
@@ -65,8 +70,8 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment';
 import {
   FulfillmentProductServiceDefinition,
-  ProductQuery,
-  ProductQueryList,
+  PackingSolutionQuery,
+  PackingSolutionQueryList,
   PackingSolutionListResponse,
   PackingSolutionResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment_product';
@@ -89,8 +94,16 @@ import {
   VAT
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/amount';
 import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth';
+import {
+  access_controlled_service,
+  access_controlled_function,
+  DefaultACSClientContextFactory
+} from './experimental/access_control_decorators';
 import { COUNTRY_CODES_EU } from './utils';
 
+export type RatioedTax = Tax & {
+  tax_ratio?: number;
+};
 
 export type OrderMap = { [key: string]: OrderResponse };
 export type ProductMap = { [key: string]: ProductResponse };
@@ -109,9 +122,7 @@ export type OperationStatusMap = { [key: string]: OperationStatus };
 export type VATMap = { [key: string]: VAT };
 export type ProductNature = PhysicalProduct & VirtualProduct;
 export type ProductVariant = PhysicalVariant & VirtualVariant;
-export type RatioedTax = Tax & {
-  tax_ratio?: number;
-};
+
 
 export type CRUDClient = Client<ProductServiceDefinition>
 | Client<TaxServiceDefinition>
@@ -127,10 +138,25 @@ export type CRUDClient = Client<ProductServiceDefinition>
 
 const CREATE_FULFILLMENT = 'createFulfillment';
 
+@access_controlled_service
 export class OrderingService
   extends ServiceBase<OrderListResponse, OrderList>
   implements OrderServiceImplementation
 {
+  private static async ACSContextFactory(
+    self: OrderingService,
+    request: OrderList,
+    context: any,
+  ): Promise<ACSClientContext> {
+    const ids = request.items?.map(item => item.id);
+    const resources = await self.getOrdersById(ids, request.subject, context);
+    return {
+      ...context,
+      subject: request.subject,
+      resources,
+    };
+  } 
+
   private readonly status_codes: { [key: string]: Status } = {
     OK: {
       id: '',
@@ -207,10 +233,10 @@ export class OrderingService
   }
 
   constructor(
-    readonly topic: Topic,
-    readonly db: DatabaseProvider,
-    readonly cfg: ServiceConfig,
-    readonly logger: Logger,
+    protected readonly topic: Topic,
+    protected readonly db: DatabaseProvider,
+    protected readonly cfg: ServiceConfig,
+    logger: Logger,
   ) {
     super(
       cfg.get('database:main:entities:0') ?? 'order',
@@ -220,6 +246,9 @@ export class OrderingService
         db,
         cfg.get('database:main:collections:0') ?? 'orders',
         cfg.get('fieldHandlers'),
+        null,
+        null,
+        logger,
       ),
       !!cfg.get('events:enableEvents')
     );
@@ -431,7 +460,7 @@ export class OrderingService
         subject,
       }
     );
-    return this.read(call, context);
+    return super.read(call, context);
   }
 
   private getOrderMap(
@@ -1085,7 +1114,7 @@ export class OrderingService
         }
       );
 
-      const response = await this.update(
+      const response = await super.update(
         {
           items,
           total_count: items.length,
@@ -1125,10 +1154,85 @@ export class OrderingService
     }
   }
 
+  @access_controlled_function({
+    action: AuthZAction.READ,
+    operation: Operation.whatIsAllowed,
+    context: DefaultACSClientContextFactory,
+    resource: [{ resource: 'order' }],
+    database: 'arangoDB',
+    useCache: true,
+  })
+  public override read(
+    request: ReadRequest,
+    context?: any
+  ) {
+    return super.read(request, context);
+  }
+
+  @access_controlled_function({
+    action: AuthZAction.CREATE,
+    operation: Operation.whatIsAllowed,
+    context: DefaultACSClientContextFactory,
+    resource: [{ resource: 'order' }],
+    database: 'arangoDB',
+    useCache: true,
+  })
+  public override create(
+    request: OrderList,
+    context?: any
+  ) {
+    request?.items?.forEach(
+      item => {
+        if (item.order_state === OrderState.UNRECOGNIZED) {
+          item.order_state = OrderState.CREATED;
+        }
+      }
+    );
+    return super.create(request, context);
+  }
+
+  @access_controlled_function({
+    action: AuthZAction.MODIFY,
+    operation: Operation.whatIsAllowed,
+    context: DefaultACSClientContextFactory,
+    resource: [{ resource: 'order' }],
+    database: 'arangoDB',
+    useCache: true,
+  })
+  public override update(
+    request: OrderList,
+    context?: any
+  ) {
+    return super.update(request, context);
+  }
+
+  @access_controlled_function({
+    action: AuthZAction.MODIFY,
+    operation: Operation.whatIsAllowed,
+    context: DefaultACSClientContextFactory,
+    resource: [{ resource: 'order' }],
+    database: 'arangoDB',
+    useCache: true,
+  })
+  public override upsert(
+    request: OrderList,
+    context?: any
+  ) {
+    return super.upsert(request, context);
+  }
+
+  @access_controlled_function({
+    action: AuthZAction.READ,
+    operation: Operation.whatIsAllowed,
+    context: DefaultACSClientContextFactory,
+    resource: [{ resource: 'order' }],
+    database: 'arangoDB',
+    useCache: true,
+  })
   public async evaluate(
     request: OrderList,
     context?: any
-  ): Promise<DeepPartial<OrderListResponse>> {
+  ): Promise<OrderListResponse> {
     try {
       return await this.aggregateOrders(
         request,
@@ -1141,10 +1245,18 @@ export class OrderingService
     }
   }
 
+  @access_controlled_function({
+    action: AuthZAction.EXECUTE,
+    operation: Operation.whatIsAllowed,
+    context: OrderingService.ACSContextFactory,
+    resource: [{ resource: 'execution.submitOrders' }],
+    database: 'arangoDB',
+    useCache: true,
+  })
   public async submit(
     request: OrderList,
     context?: any
-  ): Promise<DeepPartial<OrderListResponse>> {
+  ): Promise<OrderListResponse> {
     try {
       const responseMap = request.items.reduce(
         (a, b) => {
@@ -1180,7 +1292,7 @@ export class OrderingService
         }
       );
 
-      const orders = await this.upsert(
+      const orders = await super.upsert(
         {
           items,
           total_count: items.length,
@@ -1222,10 +1334,18 @@ export class OrderingService
     }
   }
 
+  @access_controlled_function({
+    action: AuthZAction.MODIFY,
+    operation: Operation.whatIsAllowed,
+    context: DefaultACSClientContextFactory,
+    resource: [{ resource: 'mutation.withdrawOrder' }],
+    database: 'arangoDB',
+    useCache: true,
+  })
   public async withdraw(
     request: OrderIdList,
     context?: any
-  ): Promise<DeepPartial<OrderListResponse>> {
+  ): Promise<OrderListResponse> {
     return await this.updateState(
       request.ids,
       OrderState.WITHDRAWN,
@@ -1234,10 +1354,18 @@ export class OrderingService
     );
   }
 
+  @access_controlled_function({
+    action: AuthZAction.EXECUTE,
+    operation: Operation.whatIsAllowed,
+    context: DefaultACSClientContextFactory,
+    resource: [{ resource: 'execution.cancelOrders' }],
+    database: 'arangoDB',
+    useCache: true,
+  })
   public async cancel(
     request: OrderIdList,
     context?: any
-  ): Promise<DeepPartial<OrderListResponse>> {
+  ): Promise<OrderListResponse> {
     return await this.updateState(
       request.ids,
       OrderState.CANCELLED,
@@ -1327,7 +1455,7 @@ export class OrderingService
           items,
           preferences: order.payload.packaging_preferences,
           order_id: order.payload.id,
-        } as ProductQuery;
+        } as PackingSolutionQuery;
       }
     ).filter(
       item => item.items.length > 0
@@ -1337,7 +1465,7 @@ export class OrderingService
       items,
       total_count: items.length,
       subject: request.subject
-    } as ProductQueryList;
+    } as PackingSolutionQueryList;
     const solutions = await this.fulfillment_product_service.find(
       query,
       context
@@ -1359,7 +1487,7 @@ export class OrderingService
   public async queryPackingSolution(
     request: FulfillmentRequestList,
     context?: any,
-  ): Promise<DeepPartial<PackingSolutionListResponse>> {
+  ): Promise<PackingSolutionListResponse> {
     try {
       return await this.getPackingSolution(request, context);
     }
@@ -1371,7 +1499,7 @@ export class OrderingService
   private async toFulfillmentResponsePrototypes(
     request: FulfillmentRequestList,
     context?: any,
-  ): Promise<DeepPartial<FulfillmentResponse[]>> {
+  ): Promise<FulfillmentResponse[]> {
     const orders = await this.getOrderMap(
       request.items.map(
         item => item.order_id
@@ -1451,10 +1579,18 @@ export class OrderingService
     );
   }
 
+  @access_controlled_function({
+    action: AuthZAction.CREATE,
+    operation: Operation.whatIsAllowed,
+    context: DefaultACSClientContextFactory,
+    resource: [{ resource: 'fulfillment'}],
+    database: 'arangoDB',
+    useCache: true,
+  })
   public async createFulfillment(
     request: FulfillmentRequestList,
     context?: any
-  ): Promise<DeepPartial<FulfillmentListResponse>> {
+  ): Promise<FulfillmentListResponse> {
     try {
       const prototypes = await this.toFulfillmentResponsePrototypes(
         request,
@@ -1495,10 +1631,18 @@ export class OrderingService
     }
   }
 
+  @access_controlled_function({
+    action: AuthZAction.CREATE,
+    operation: Operation.whatIsAllowed,
+    context: DefaultACSClientContextFactory,
+    resource: [{ resource: 'fulfillment' }],
+    database: 'arangoDB',
+    useCache: true,
+  })
   public async triggerFulfillment(
     request: FulfillmentRequestList,
     context?: any
-  ): Promise<DeepPartial<FulfillmentListResponse>> {
+  ): Promise<FulfillmentListResponse> {
     try {
       const responseMap = request.items.reduce(
         (a, b) => {
@@ -1551,9 +1695,9 @@ export class OrderingService
   }
 
   private async toInvoiceResponsePrototypes(
-    request: InvoiceRequestList,
+    request: OrderInvoiceRequestList,
     context?: any,
-  ): Promise<DeepPartial<InvoiceResponse[]>> {
+  ): Promise<InvoiceResponse[]> {
     const order_map = await this.getOrderMap(
       request.items.flatMap(
         item => item.sections.map(
@@ -1739,10 +1883,18 @@ export class OrderingService
     );
   }
 
+  @access_controlled_function({
+    action: AuthZAction.CREATE,
+    operation: Operation.whatIsAllowed,
+    context: DefaultACSClientContextFactory,
+    resource: [{ resource: 'invoice' }],
+    database: 'arangoDB',
+    useCache: true,
+  })
   public async createInvoice(
-    request: InvoiceRequestList,
+    request: OrderInvoiceRequestList,
     context?: any,
-  ): Promise<DeepPartial<InvoiceListResponse>> {
+  ): Promise<InvoiceListResponse> {
     try {
       const prototypes = await this.toInvoiceResponsePrototypes(
         request,
@@ -1785,10 +1937,18 @@ export class OrderingService
     }
   };
 
+  @access_controlled_function({
+    action: AuthZAction.CREATE,
+    operation: Operation.whatIsAllowed,
+    context: DefaultACSClientContextFactory,
+    resource: [{ resource: 'invoice' }],
+    database: 'arangoDB',
+    useCache: true,
+  })
   public async triggerInvoice(
-    request: InvoiceRequestList,
+    request: OrderInvoiceRequestList,
     context?: any,
-  ): Promise<DeepPartial<StatusListResponse>> {
+  ): Promise<StatusListResponse> {
     return null;
   };
 }

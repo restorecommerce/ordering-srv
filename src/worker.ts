@@ -34,6 +34,7 @@ import { ServerReflectionService } from 'nice-grpc-server-reflection';
 import { Fulfillment } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment';
 import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth';
 import { OrderingCommandInterface } from './command_interface';
+import { initAuthZ } from '@restorecommerce/acs-client';
 
 registerProtoMeta(
   OrderMeta,
@@ -272,7 +273,6 @@ export class Worker {
           }
         }
       ));
-      await topic.consumer?.run();
       this.topics.set(key, topic);
     }));
 
@@ -336,6 +336,7 @@ export class Worker {
     });
 
     // start server
+    await initAuthZ(cfg);
     await this.server.start();
     this.logger.info('server started successfully');
   }

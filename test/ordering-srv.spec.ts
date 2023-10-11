@@ -22,7 +22,7 @@ import {
   startWorker,
   connectEvents,
   connectTopics,
-  mockServices
+  mockServices,
 } from '.';
 
 describe('The Ordering Service:', () => {
@@ -89,7 +89,7 @@ describe('The Ordering Service:', () => {
       should.equal(
         response.operationStatus?.code,
         200,
-        'response.operationStatus?.code expected to be 200',
+        '\n' + JSON.stringify(response.operationStatus, null, 2),
       );
       should.ok(
         !response.items?.some(item => item.status?.code !== 200),
@@ -110,7 +110,7 @@ describe('The Ordering Service:', () => {
       should.equal(
         response.operationStatus?.code,
         200,
-        'response.operationStatus.code expected to be 200'
+        '\n' + JSON.stringify(response.operationStatus, null, 2),
       );
       should.ok(
         !response.items?.some(item => item.status?.code !== 200),
@@ -142,7 +142,7 @@ describe('The Ordering Service:', () => {
       should.equal(
         response.operationStatus?.code,
         200,
-        'response.operationStatus.code expected to be 200'
+        '\n' + JSON.stringify(response.operationStatus, null, 2),
       );
       should.ok(
         !response.items?.some(item => item.status?.code !== 200),
@@ -163,7 +163,7 @@ describe('The Ordering Service:', () => {
       should.notEqual(
         response.operationStatus?.code,
         200,
-        'response.operationStatus?.code expected NOT to be 200'
+        '\n' + JSON.stringify(response.operationStatus, null, 2),
       );
       should.ok(
         !response.items?.some(item => item.status?.code === 200),
@@ -172,80 +172,84 @@ describe('The Ordering Service:', () => {
     });
   }
 
-  it('should create a fulfillment request', async function() {
-    this.timeout(5000);
-    const sample = samples.orders.valid[0];
-    const response = await client.createFulfillment({
-      items: sample.items.map((order: Order): FulfillmentRequest => ({
-        orderId: order.id,
-        selectedItems: [],
-        senderAddress: samples.businessAddresses[0],
-      })),
-      totalCount: 1,
-      subject: sample.subject,
+  for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
+    it(`should create a fulfillment request: ${sample_name}`, async function() {
+      this.timeout(5000);
+      const response = await client.createFulfillment({
+        items: sample.items?.map((order: Order): FulfillmentRequest => ({
+          orderId: order.id,
+          selectedItems: [],
+          senderAddress: samples.businessAddresses[0],
+        })),
+        totalCount: 1,
+        subject: sample.subject,
+      });
+      should.equal(
+        response.operationStatus?.code,
+        200,
+        '\n' + JSON.stringify(response.operationStatus, null, 2),
+      );
+      should.ok(
+        !response.items?.some(item => item.status?.code !== 200),
+        'response.items[*].status.code expected all to be 200',
+      );
     });
-    should.equal(
-      response.operationStatus?.code,
-      200,
-      'response.operationStatus.code expected to be 200'
-    );
-    should.ok(
-      !response.items?.some(item => item.status?.code !== 200),
-      'response.items[*].status.code expected all to be 200',
-    );
-  });
+  }
 
-  it('should withdraw orders', async function() {
-    this.timeout(5000);
-    const sample = samples.orders.valid[0];
-    const response = await client.withdraw({
-      ids: sample.items.map((item: any) => item.id),
-      subject: sample.subject,
+  for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
+    it(`should withdraw orders: ${sample_name}`, async function() {
+      this.timeout(5000);
+      const response = await client.withdraw({
+        ids: sample.items?.map((item: any) => item.id),
+        subject: sample.subject,
+      });
+      should.equal(
+        response.operationStatus?.code,
+        200,
+        '\n' + JSON.stringify(response.operationStatus, null, 2),
+      );
+      should.ok(
+        !response.items?.some(item => item.status?.code !== 200),
+        'response.items[*].status.code expected all to be 200',
+      );
     });
-    should.equal(
-      response.operationStatus?.code,
-      200,
-      'response.operationStatus.code expected to be 200'
-    );
-    should.ok(
-      !response.items?.some(item => item.status?.code !== 200),
-      'response.items[*].status.code expected all to be 200',
-    );
-  });
+  }
 
-  it('should cancel orders', async function() {
-    this.timeout(5000);
-    const sample = samples.orders.valid[0];
-    const response = await client.cancel({
-      ids: sample.items.map((item: any) => item.id),
-      subject: sample.subject,
+  for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
+    it(`should cancel orders: ${sample_name}`, async function() {
+      this.timeout(5000);
+      const response = await client.cancel({
+        ids: sample.items?.map((item: any) => item.id),
+        subject: sample.subject,
+      });
+      should.equal(
+        response.operationStatus?.code,
+        200,
+        '\n' + JSON.stringify(response.operationStatus, null, 2),
+      );
+      should.ok(
+        !response.items?.some(item => item.status?.code !== 200),
+        'response.items[*].status.code expected all to be 200',
+      );
     });
-    should.equal(
-      response.operationStatus?.code,
-      200,
-      'response.operationStatus.code expected to be 200'
-    );
-    should.ok(
-      !response.items?.some(item => item.status?.code !== 200),
-      'response.items[*].status.code expected all to be 200',
-    );
-  });
+  }
 
-  it('should delete orders', async function() {
-    this.timeout(5000);
-    const sample = samples.orders.valid[0];
-    const response = await client.delete({
-      ids: sample.items.map((item: any) => item.id),
-      subject: sample.subject,
+  for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
+    it(`should delete orders: ${sample_name}`, async function() {
+      this.timeout(5000);
+      const response = await client.delete({
+        ids: sample.items?.map((item: any) => item.id),
+        subject: sample.subject,
+      });
+      should.equal(
+        response.operationStatus?.code,
+        200,
+        '\n' + JSON.stringify(response.operationStatus, null, 2),
+      );
+      should.ok(
+        !response?.status?.some(status => status?.code !== 200),
+        'response.status[*].code expected all to be 200',
+      );
     });
-    should.equal(
-      response.operationStatus?.code,
-      200,
-      'response.operationStatus.code expected to be 200'
-    );
-    should.ok(
-      !response?.status?.some(status => status?.code !== 200),
-      'response.status[*].code expected all to be 200',
-    );
-  });
+  }
 });
