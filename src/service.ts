@@ -27,7 +27,7 @@ import {
   OrderIdList,
   OrderListResponse,
   OrderServiceImplementation,
-  OrderInvoiceRequestList,
+  OrderingInvoiceRequestList,
   FulfillmentInvoiceMode,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order';
 import {
@@ -67,6 +67,7 @@ import {
   FulfillmentResponse,
   FulfillmentList,
   Packaging,
+  Parcel,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment';
 import {
   FulfillmentProductServiceDefinition,
@@ -155,7 +156,7 @@ export class OrderingService
       subject: request.subject,
       resources,
     };
-  } 
+  }
 
   private readonly status_codes: { [key: string]: Status } = {
     OK: {
@@ -1695,7 +1696,7 @@ export class OrderingService
   }
 
   private async toInvoiceResponsePrototypes(
-    request: OrderInvoiceRequestList,
+    request: OrderingInvoiceRequestList,
     context?: any,
   ): Promise<InvoiceResponse[]> {
     const order_map = await this.getOrderMap(
@@ -1799,7 +1800,7 @@ export class OrderingService
                   })
                 );
 
-                const fulfillment_items = Object.values((
+                const fulfillment_items: Parcel[] = Object.values((
                   section.fulfillment_mode === FulfillmentInvoiceMode.INCLUDE && (
                     section.selected_fulfillments?.flatMap(
                       selection => fulfillment_map[section.order_id].find(
@@ -1892,7 +1893,7 @@ export class OrderingService
     useCache: true,
   })
   public async createInvoice(
-    request: OrderInvoiceRequestList,
+    request: OrderingInvoiceRequestList,
     context?: any,
   ): Promise<InvoiceListResponse> {
     try {
@@ -1946,7 +1947,7 @@ export class OrderingService
     useCache: true,
   })
   public async triggerInvoice(
-    request: OrderInvoiceRequestList,
+    request: OrderingInvoiceRequestList,
     context?: any,
   ): Promise<StatusListResponse> {
     return null;

@@ -48,12 +48,12 @@ export function access_controlled_service<T extends { new (...args: any): {} }>(
 }
 
 export function access_controlled_function(kwargs: {
-  action: AuthZAction,
-  operation: Operation,
-  context?: ACSClientContext | ACSClientContextFactory,
-  resource?: Resource[] | ResourceFactory,
-  database?: 'arangoDB' | 'postgres',
-  useCache?: true
+  action: AuthZAction;
+  operation: Operation;
+  context?: ACSClientContext | ACSClientContextFactory;
+  resource?: Resource[] | ResourceFactory;
+  database?: 'arangoDB' | 'postgres';
+  useCache?: true;
 }) {
   return function (
     target: any,
@@ -61,7 +61,7 @@ export function access_controlled_function(kwargs: {
     descriptor: TypedPropertyDescriptor<any>,
   ) {
     const method = descriptor.value!;
-    
+
     descriptor.value = async function () {
       try {
         if (!this.user_service) {
@@ -75,7 +75,7 @@ export function access_controlled_function(kwargs: {
         const resource = typeof(kwargs.resource) === 'function'
           ? await kwargs.resource(this, ...arguments)
           : kwargs.resource;
-        
+
         const subject = context?.subject;
         if (subject?.token) {
           const user = await this.user_service.findByToken({ token: subject.token });
@@ -93,7 +93,7 @@ export function access_controlled_function(kwargs: {
           kwargs.database ?? 'arangoDB',
           kwargs.useCache ?? false
         );
-        console.log(response?.decision);
+
         if (response?.decision !== Response_Decision.PERMIT) {
           return response;
         }
@@ -105,11 +105,11 @@ export function access_controlled_function(kwargs: {
             code: err.code ?? 500,
             message: err.details ?? err.message ?? err,
           }
-        }
+        };
       }
       return await method.apply(this, arguments);
     };
-  }
+  };
 }
 
 export const DefaultACSClientContextFactory: ACSClientContextFactory = (
