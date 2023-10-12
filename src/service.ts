@@ -1171,7 +1171,7 @@ export class OrderingService
 
   @access_controlled_function({
     action: AuthZAction.CREATE,
-    operation: Operation.whatIsAllowed,
+    operation: Operation.isAllowed,
     context: DefaultACSClientContextFactory,
     resource: [{ resource: 'order' }],
     database: 'arangoDB',
@@ -1193,7 +1193,7 @@ export class OrderingService
 
   @access_controlled_function({
     action: AuthZAction.MODIFY,
-    operation: Operation.whatIsAllowed,
+    operation: Operation.isAllowed,
     context: DefaultACSClientContextFactory,
     resource: [{ resource: 'order' }],
     database: 'arangoDB',
@@ -1208,7 +1208,7 @@ export class OrderingService
 
   @access_controlled_function({
     action: AuthZAction.MODIFY,
-    operation: Operation.whatIsAllowed,
+    operation: Operation.isAllowed,
     context: DefaultACSClientContextFactory,
     resource: [{ resource: 'order' }],
     database: 'arangoDB',
@@ -1247,7 +1247,7 @@ export class OrderingService
 
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
-    operation: Operation.whatIsAllowed,
+    operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
     resource: [{ resource: 'execution.submitOrders' }],
     database: 'arangoDB',
@@ -1336,7 +1336,7 @@ export class OrderingService
 
   @access_controlled_function({
     action: AuthZAction.MODIFY,
-    operation: Operation.whatIsAllowed,
+    operation: Operation.isAllowed,
     context: DefaultACSClientContextFactory,
     resource: [{ resource: 'mutation.withdrawOrder' }],
     database: 'arangoDB',
@@ -1356,7 +1356,7 @@ export class OrderingService
 
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
-    operation: Operation.whatIsAllowed,
+    operation: Operation.isAllowed,
     context: DefaultACSClientContextFactory,
     resource: [{ resource: 'execution.cancelOrders' }],
     database: 'arangoDB',
@@ -1581,7 +1581,7 @@ export class OrderingService
 
   @access_controlled_function({
     action: AuthZAction.CREATE,
-    operation: Operation.whatIsAllowed,
+    operation: Operation.isAllowed,
     context: DefaultACSClientContextFactory,
     resource: [{ resource: 'fulfillment'}],
     database: 'arangoDB',
@@ -1633,7 +1633,7 @@ export class OrderingService
 
   @access_controlled_function({
     action: AuthZAction.CREATE,
-    operation: Operation.whatIsAllowed,
+    operation: Operation.isAllowed,
     context: DefaultACSClientContextFactory,
     resource: [{ resource: 'fulfillment' }],
     database: 'arangoDB',
@@ -1885,7 +1885,7 @@ export class OrderingService
 
   @access_controlled_function({
     action: AuthZAction.CREATE,
-    operation: Operation.whatIsAllowed,
+    operation: Operation.isAllowed,
     context: DefaultACSClientContextFactory,
     resource: [{ resource: 'invoice' }],
     database: 'arangoDB',
@@ -1939,7 +1939,7 @@ export class OrderingService
 
   @access_controlled_function({
     action: AuthZAction.CREATE,
-    operation: Operation.whatIsAllowed,
+    operation: Operation.isAllowed,
     context: DefaultACSClientContextFactory,
     resource: [{ resource: 'invoice' }],
     database: 'arangoDB',

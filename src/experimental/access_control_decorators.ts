@@ -68,15 +68,15 @@ export function access_controlled_function(kwargs: {
           throw new Error('An @access_controlled_function must be member of an @access_controlled_service class');
         }
 
-        if (typeof(kwargs.context) === 'function') {
-          kwargs.context = await kwargs.context(this, ...arguments);
-        }
+        const context = typeof(kwargs.context) === 'function'
+          ? await kwargs.context(this, ...arguments)
+          : kwargs.context;
 
-        if (typeof(kwargs.resource) === 'function') {
-          kwargs.resource = await kwargs.resource(this, ...arguments);
-        }
-
-        const subject = kwargs.context?.subject;
+        const resource = typeof(kwargs.resource) === 'function'
+          ? await kwargs.resource(this, ...arguments)
+          : kwargs.resource;
+        
+        const subject = context?.subject;
         if (subject?.token) {
           const user = await this.user_service.findByToken({ token: subject.token });
           if (user?.payload?.id) {
@@ -86,14 +86,15 @@ export function access_controlled_function(kwargs: {
 
         const response = await accessRequest(
           subject,
-          kwargs.resource ?? [],
+          resource ?? [],
           kwargs.action,
-          kwargs.context,
+          context,
           kwargs.operation,
           kwargs.database ?? 'arangoDB',
           kwargs.useCache ?? false
         );
-        if (response?.decision === Response_Decision.DENY) {
+        console.log(response?.decision);
+        if (response?.decision !== Response_Decision.PERMIT) {
           return response;
         }
       }

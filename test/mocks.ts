@@ -1,5 +1,6 @@
 import {
   Response,
+  Response_Decision,
   ReverseQuery,
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/access_control';
 import {
@@ -50,10 +51,11 @@ import { DeepPartial } from '@restorecommerce/rc-grpc-clients/dist/generated/io/
 import { Effect } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/rule';
 import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/auth';
 import { getRedisInstance, logger } from '.';
+import { HierarchicalScope } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth';
 
 type Address = ShippingAddress & BillingAddress;
 
-const meta = {
+const mainMeta = {
   modifiedBy: 'SYSTEM',
   acls: [],
   created: new Date(),
@@ -65,23 +67,53 @@ const meta = {
       attributes: [
         {
           id: 'urn:restorecommerce:acs:names:ownerInstance',
-          value: 'r-ug',
+          value: 'main',
           attributes: []
         }
       ]
     },
+    {
+      id: 'urn:restorecommerce:acs:names:ownerInstance',
+      value: 'main',
+      attributes: []
+    }
+  ]
+};
+
+const subMeta = {
+  modifiedBy: 'SYSTEM',
+  acls: [],
+  created: new Date(),
+  modified: new Date(),
+  owners: [
+    {
+      id: 'urn:restorecommerce:acs:names:ownerIndicatoryEntity',
+      value: 'urn:restorecommerce:acs:model:organization.Organization',
+      attributes: [
+        {
+          id: 'urn:restorecommerce:acs:names:ownerInstance',
+          value: 'sub',
+          attributes: []
+        }
+      ]
+    },
+    {
+      id: 'urn:restorecommerce:acs:names:ownerInstance',
+      value: 'sub',
+      attributes: []
+    }
   ]
 };
 
 const subjects: { [key: string]: Subject } = {
   superadmin: {
     id: 'superadmin',
-    scope: 'r-ug',
+    scope: 'main',
     token: 'superadmin',
   },
   admin: {
     id: 'admin',
-    scope: 'r-ug',
+    scope: 'sub',
     token: 'admin',
   },
 };
@@ -330,7 +362,7 @@ const validOrders: { [key: string]: OrderList } = {
         },
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
-        meta,
+        meta: mainMeta,
       }
     ],
     totalCount: 1,
@@ -363,7 +395,7 @@ const validOrders: { [key: string]: OrderList } = {
         },
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
-        meta,
+        meta: subMeta,
       }
     ],
     totalCount: 1,
@@ -399,11 +431,47 @@ const invalidOrders: { [key: string]: OrderList } = {
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
         orderState: OrderState.CREATED,
-        meta,
+        meta: mainMeta,
       }
     ],
     totalCount: 1,
     subject: subjects.superadmin,
+  },
+  'as admin': {
+    items: [
+      {
+        id: 'invalidOrder_2',
+        items: [
+          {
+            productId: products[0]?.payload?.id,
+            variantId: products[0]?.payload?.product?.physical?.variants?.[0]?.id,
+            quantity: 4,
+          }
+        ],
+        userId: 'userId_1',
+        customerId: 'customerId_1',
+        shopId: 'shop_1',
+        notificationEmail: 'user@test.spec',
+        packagingPreferences: {
+          couriers: [{
+            id: 'name',
+            value: 'DHL',
+            attributes: [],
+          }],
+          options: [],
+        },
+        totalAmounts: [],
+        billingAddress: residentialAddresses[0],
+        shippingAddress: residentialAddresses[0],
+        orderState: OrderState.CREATED,
+        meta: subMeta,
+      }
+    ],
+    totalCount: 1,
+    subject: {
+      ...subjects.admin,
+      scope: 'main',
+    },
   },
 };
 
@@ -419,8 +487,8 @@ const users: { [key: string]: UserResponse } = {
       default_scope: 'r-ug',
       role_associations: [
         {
-          role: 'superadministrator-r-id',
           id: 'superadmin-1-administrator-r-id',
+          role: 'superadministrator-r-id',
           attributes: [],
         },
       ],
@@ -433,7 +501,7 @@ const users: { [key: string]: UserResponse } = {
           token: 'superadmin',
         }
       ],
-      meta,
+      meta: mainMeta,
     },
     status: {
       id: 'superadmin',
@@ -449,13 +517,22 @@ const users: { [key: string]: UserResponse } = {
       last_name: 'Musteradmin',
       email: 'manuel.musteradmin@restorecommerce.io',
       password: 'A$1rcadminpw',
-      default_scope: 'r-ug',
+      default_scope: 'sub',
       role_associations: [
         {
-          role: 'administrator-r-id',
           id: 'admin-1-administrator-r-id',
+          role: 'administrator-r-id',
           attributes: [
-
+            {
+              id: 'urn:restorecommerce:acs:names:roleScopingEntity',
+              value: 'urn:restorecommerce:acs:model:organization.Organization',
+              attributes: [
+                {
+                  id: 'urn:restorecommerce:acs:names:roleScopingInstance',
+                  value: 'sub',
+                }
+              ],
+            }
           ],
         },
       ],
@@ -468,7 +545,7 @@ const users: { [key: string]: UserResponse } = {
           token: 'admin',
         }
       ],
-      meta,
+      meta: mainMeta,
     },
     status: {
       id: 'admin',
@@ -478,32 +555,46 @@ const users: { [key: string]: UserResponse } = {
   },
 };
 
-const hierarchicalScopes = {
+const hierarchicalScopes: { [key: string]: HierarchicalScope[] } = {
   superadmin: [
     {
-      id: 'r-ug',
+      id: 'main',
       role: 'superadministrator-r-id',
+      children: [
+        {
+          id: 'sub',
+        }
+      ]
     }
   ],
   admin: [
     {
-      id: 'r-ug',
+      id: 'sub',
       role: 'administrator-r-id',
     }
   ]
 };
 
-const whatIsAllowed: { [key: string]: ReverseQuery } = {
-  superadmin: {
-    policySets: [
-      {
-        id: 'policy_set',
-        combiningAlgorithm: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
-        effect: Effect.PERMIT,
-        policies: [
-          {
-            id: 'policy_superadmin_permit_all',
-            combiningAlgorithm: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
+const whatIsAllowed: ReverseQuery = {
+  policySets: [
+    {
+      id: 'policy_set',
+      combiningAlgorithm: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
+      effect: Effect.DENY,
+      policies: [
+        {
+          id: 'policy_superadmin_permit_all',
+          combiningAlgorithm: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
+          effect: Effect.DENY,
+          target: {
+            subjects: [
+              {
+                id: 'urn:restorecommerce:acs:names:role',
+                value: 'superadministrator-r-id',
+              },
+            ],
+          },
+          rules: [{
             effect: Effect.PERMIT,
             target: {
               subjects: [
@@ -513,50 +604,42 @@ const whatIsAllowed: { [key: string]: ReverseQuery } = {
                 },
               ],
             },
-            rules: [{
-              effect: Effect.PERMIT,
-            }],
-            hasRules: true,
-          },
-        ]
-      },
-    ],
-    operationStatus
-  },
-  admin: {
-    policySets: [
-      {
-        id: 'policy_set',
-        combiningAlgorithm: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
-        effect: Effect.PERMIT,
-        policies: [
-          {
-            id: 'order_policy_admin',
-            combiningAlgorithm: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
-            effect: Effect.PERMIT,
-            rules: [{
-              id: 'admin_can_do_all_by_scope',
-              effect: Effect.PERMIT,
-              target: {
-                subjects: [
-                  {
-                    id: 'urn:restorecommerce:acs:names:role',
-                    value: 'administrator-r-id',
-                  },
-                  {
-                    id: 'urn:restorecommerce:acs:names:roleScopingEntity',
-                    value: 'urn:restorecommerce:acs:model:organization.Organization',
-                  },
-                ],
+          }],
+          hasRules: true,
+        },{
+          id: 'policy_admin_permit_all_by_scope',
+          combiningAlgorithm: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
+          effect: Effect.DENY,
+          target: {
+            subjects: [
+              {
+                id: 'urn:restorecommerce:acs:names:role',
+                value: 'administrator-r-id',
               },
-            }],
-            hasRules: true
+            ],
           },
-        ]
-      },
-    ],
-    operationStatus
-  },
+          rules: [{
+            id: 'admin_can_do_all_by_scope',
+            effect: Effect.PERMIT,
+            target: {
+              subjects: [
+                {
+                  id: 'urn:restorecommerce:acs:names:role',
+                  value: 'administrator-r-id',
+                },
+                {
+                  id: 'urn:restorecommerce:acs:names:roleScopingEntity',
+                  value: 'urn:restorecommerce:acs:model:organization.Organization',
+                },
+              ],
+            },
+          }],
+          hasRules: true
+        },
+      ]
+    },
+  ],
+  operationStatus,
 };
 
 export const samples = {
@@ -576,15 +659,13 @@ export const rules = {
     isAllowed: (
       call: any,
       callback: (error: any, response: DeepPartial<Response>) => void,
-    ) => callback(null, {}),
+    ) => callback(null, {
+      decision: Response_Decision.PERMIT,
+    }),
     whatIsAllowed: (
       call: any,
       callback: (error: any, response: DeepPartial<ReverseQuery>) => void,
-    ) => callback(null, whatIsAllowed[
-      call.request?.target?.subjects?.find(
-        (subject: any) => subject?.id === 'urn:oasis:names:tc:xacml:1.0:subject:subject-id'
-      )?.value
-    ]),
+    ) => callback(null, whatIsAllowed),
   },
   user: {
     read: (
