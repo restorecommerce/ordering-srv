@@ -33,6 +33,9 @@ COPY --chown=node:node --from=build $APP_HOME/lib $APP_HOME/lib
 EXPOSE 50051
 
 USER root
+RUN GRPC_HEALTH_PROBE_VERSION=v0.3.3 && \
+    wget -qO/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64 && \
+    chmod +x /bin/grpc_health_probe
 USER node
 
 HEALTHCHECK CMD ["/bin/grpc_health_probe", "-addr=:50051"]

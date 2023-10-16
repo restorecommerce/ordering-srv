@@ -25,7 +25,7 @@ import { Response_Decision } from '@restorecommerce/rc-grpc-clients/dist/generat
 export type ACSClientContextFactory = (self: any, ...args: any) => Promise<ACSClientContext>;
 export type ResourceFactory = (self: any, ...args: any) => Promise<Resource[]>;
 
-export function access_controlled_service<T extends { new (...args: any): {} }>(baseService: T) {
+export function access_controlled_service<T extends { new (...args: any): {} }>(baseService: T): any {
   return class extends baseService {
     public readonly user_service: Client<UserServiceDefinition>;
 
