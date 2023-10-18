@@ -1,3 +1,7 @@
+## 0.0.10 (October 18th, 2023)
+
+- fix config typo
+
 ## 0.0.9 (October 18th, 2023)
 
 - override redis host in production config
