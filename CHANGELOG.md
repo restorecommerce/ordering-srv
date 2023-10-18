@@ -1,3 +1,7 @@
+## 0.0.9 (October 18th, 2023)
+
+- override redis host in production config
+
 ## 0.0.8 (October 18th, 2023)
 
 - change default config redis url

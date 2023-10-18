@@ -1,6 +1,6 @@
 {
   "name": "@restorecommerce/ordering-srv",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "Restore Commerce microservice for managing orders",
   "main": "./lib/index.js",
   "author": "n-fuse GmbH",
