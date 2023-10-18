@@ -21,7 +21,7 @@
     "@restorecommerce/cart": "^1.0.1",
     "@restorecommerce/chassis-srv": "^1.2.5",
     "@restorecommerce/cluster-service": "^1.0.2",
-    "@restorecommerce/grpc-client": "^2.0.4",
+    "@restorecommerce/grpc-client": "^2.0.5",
     "@restorecommerce/kafka-client": "^1.1.3",
     "@restorecommerce/logger": "^1.2.4",
     "@restorecommerce/rc-grpc-clients": "^5.1.3",
