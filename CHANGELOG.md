@@ -1,3 +1,7 @@
+## 0.0.8 (October 18th, 2023)
+
+- change default config redis url
+
 ## 0.0.6 (September 1st, 2023)
 
 - updated dependencies
