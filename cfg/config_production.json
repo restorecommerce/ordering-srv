@@ -22,7 +22,7 @@
       "provider": "arango",
       "host": "arangodb",
       "port": 8529,
-      "database": "identity-srv",
+      "database": "ordering-srv",
       "autoCreate": true
     }
   },
@@ -36,28 +36,22 @@
     }
   },
   "client": {
+    "acs-srv": {
+      "address": "access-control-srv:50051"
+    },
+    "user": {
+      "address": "identity-srv:50051"
+    },
     "product": {
       "address": "catalog-srv:50051"
     },
-    "fulfillment": {
-      "address": "fulfillment-srv:50051"
-    },
-    "fulfillment_product": {
-      "address": "fulfillment-srv:50051"
-    },
-    "organization": {
-      "address": "resource-srv:50051"
-    },
-    "contact-point": {
+    "contact_point": {
       "address": "resource-srv:50051"
     },
     "address": {
       "address": "resource-srv:50051"
     },
     "country": {
-      "address": "resource-srv:50051"
-    },
-    "contact_point": {
       "address": "resource-srv:50051"
     },
     "tax": {
@@ -72,11 +66,17 @@
     "shop": {
       "address": "resource-srv:50051"
     },
+    "organization": {
+      "address": "resource-srv:50051"
+    },
+    "fulfillment": {
+      "address": "fulfillment-srv:50051"
+    },
+    "fulfillment_product": {
+      "address": "fulfillment-srv:50051"
+    },
     "invoice": {
       "address": "invoice-srv:50051"
-    },
-    "graph-srv": {
-      "address": "resource-srv:50051"
     }
   },
   "server": {
