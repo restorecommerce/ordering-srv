@@ -12,11 +12,6 @@
   "redis": {
     "url": "redis://redis:6379"
   },
-  "authorization": {
-    "cache": {
-      "host": "redis"
-    }
-  },
   "database": {
     "main": {
       "provider": "arango",
@@ -77,6 +72,11 @@
     },
     "invoice": {
       "address": "invoice-srv:50051"
+    }
+  },
+  "authorization": {
+    "cache": {
+      "url": "redis://redis:6379"
     }
   },
   "server": {
