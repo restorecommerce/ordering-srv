@@ -1,3 +1,9 @@
+## 0.0.11 (October 27th, 2023)
+
+- fix production configs
+- upgrade dependencies
+- use decorators of new acs-client lib
+
 ## 0.0.10 (October 18th, 2023)
 
 - fix config typo
@@ -9,6 +15,10 @@
 ## 0.0.8 (October 18th, 2023)
 
 - change default config redis url
+
+## 0.0.7 (October 17st, 2023)
+
+- add access-control support
 
 ## 0.0.6 (September 1st, 2023)
 

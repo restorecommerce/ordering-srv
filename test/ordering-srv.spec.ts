@@ -23,7 +23,7 @@ import {
   connectEvents,
   connectTopics,
   mockServices,
-} from '.';
+} from './utils';
 
 describe('The Ordering Service:', () => {
   let mocking: GrpcMockServer[];

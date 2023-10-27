@@ -8,23 +8,29 @@ import {
   OrderState,
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order';
 import { 
-  ProductListResponse, ProductResponse
+  ProductListResponse,
+  ProductResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/product';
 import {
-  OrganizationListResponse, OrganizationResponse
+  OrganizationListResponse,
+  OrganizationResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/organization';
 import {
-  ContactPointListResponse, ContactPointResponse
+  ContactPointListResponse,
+  ContactPointResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/contact_point';
 import {
-  AddressListResponse, BillingAddress, ShippingAddress
+  AddressListResponse,
+  BillingAddress,
+  ShippingAddress
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/address';
 import {
   CountryListResponse,
   CountryResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/country';
 import {
-  TaxListResponse, TaxResponse
+  TaxListResponse,
+  TaxResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/tax';
 import {
   TaxTypeListResponse
@@ -33,10 +39,13 @@ import {
   PackingSolutionListResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment_product';
 import {
-  UserListResponse, UserResponse, UserType
+  UserListResponse,
+  UserResponse,
+  UserType
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/user';
 import {
-  ShopListResponse, ShopResponse
+  ShopListResponse,
+  ShopResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/shop';
 import {
   CustomerListResponse
@@ -45,13 +54,29 @@ import {
   FulfillmentListResponse,
   State as FulfillmentState
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment';
-import { OperationStatus } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/status';
-import { InvoiceListResponse, PaymentState } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/invoice';
-import { DeepPartial } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/resource_base';
-import { Effect } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/rule';
-import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/auth';
-import { getRedisInstance, logger } from '.';
-import { HierarchicalScope } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth';
+import {
+  OperationStatus
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/status';
+import {
+  InvoiceListResponse,
+  PaymentState
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/invoice';
+import {
+  DeepPartial
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/resource_base';
+import {
+  Effect
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/rule';
+import {
+  Subject
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/auth';
+import {
+  HierarchicalScope
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth';
+import {
+  getRedisInstance,
+  logger
+} from './utils';
 
 type Address = ShippingAddress & BillingAddress;
 
