@@ -274,6 +274,10 @@
       "db-index": 5,
       "ttl": 3600,
       "prefix": "acs:"
+    },
+    "unauthenticated_user": {
+      "id": "unauthenticated_user",
+      "token": "2ce88810e1a8463fa14c8bc6cfa12345"
     }
   },
   "statusCodes": {

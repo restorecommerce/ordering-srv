@@ -1,3 +1,7 @@
+## 0.0.12 (October 28th, 2023)
+
+- configure unautheticated tech user
+
 ## 0.0.11 (October 27th, 2023)
 
 - fix production configs
