@@ -1171,7 +1171,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.CREATE,
     operation: Operation.isAllowed,
-    context: DefaultACSClientContextFactory,
+    context: OrderingService.ACSContextFactory,
     resource: [{ resource: 'order' }],
     database: 'arangoDB',
     useCache: true,
@@ -1193,7 +1193,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
-    context: DefaultACSClientContextFactory,
+    context: OrderingService.ACSContextFactory,
     resource: [{ resource: 'order' }],
     database: 'arangoDB',
     useCache: true,
@@ -1208,7 +1208,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
-    context: DefaultACSClientContextFactory,
+    context: OrderingService.ACSContextFactory,
     resource: [{ resource: 'order' }],
     database: 'arangoDB',
     useCache: true,
@@ -1937,7 +1937,7 @@ export class OrderingService
   };
 
   @access_controlled_function({
-    action: AuthZAction.CREATE,
+    action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: DefaultACSClientContextFactory,
     resource: [{ resource: 'invoice' }],
