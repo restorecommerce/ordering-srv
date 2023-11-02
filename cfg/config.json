@@ -172,40 +172,40 @@
       "address": "localhost:50061"
     },
     "user": {
-      "address": "localhost:50065"
+      "address": "localhost:50051"
     },
     "product": {
-      "address": "localhost:50066"
-    },
-    "contact_point": {
-      "address": "localhost:50067"
-    },
-    "address": {
       "address": "localhost:50068"
     },
+    "contact_point": {
+      "address": "localhost:50063"
+    },
+    "address": {
+      "address": "localhost:50063"
+    },
     "country": {
-      "address": "localhost:50069"
+      "address": "localhost:50063"
     },
     "tax": {
-      "address": "localhost:50070"
+      "address": "localhost:50063"
     },
     "tax_type": {
-      "address": "localhost:50071"
+      "address": "localhost:50063"
     },
     "customer": {
-      "address": "localhost:50072"
+      "address": "localhost:50063"
     },
     "shop": {
-      "address": "localhost:50073"
+      "address": "localhost:50063"
     },
     "organization": {
-      "address": "localhost:50074"
+      "address": "localhost:50063"
     },
     "fulfillment": {
-      "address": "localhost:50075"
+      "address": "localhost:50067"
     },
     "fulfillment_product": {
-      "address": "localhost:50076"
+      "address": "localhost:50067"
     },
     "invoice": {
       "address": "localhost:50077"
@@ -216,7 +216,7 @@
       {
         "name": "grpcOrdering",
         "provider": "grpc",
-        "addr": "0.0.0.0:50051"
+        "addr": "0.0.0.0:50065"
       }
     ]
   },
