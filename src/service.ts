@@ -144,10 +144,10 @@ export class OrderingService
 {
   private static async ACSContextFactory(
     self: OrderingService,
-    request: OrderList,
+    request: OrderList & OrderIdList & FulfillmentRequestList & OrderingInvoiceRequestList,
     context: any,
   ): Promise<ACSClientContext> {
-    const ids = request.items?.map(item => item.id);
+    const ids = request.ids ?? request.items?.map(item => item.id);
     const resources = await self.getOrdersById(ids, request.subject, context);
     return {
       ...context,
@@ -1334,10 +1334,10 @@ export class OrderingService
   }
 
   @access_controlled_function({
-    action: AuthZAction.MODIFY,
+    action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
-    context: DefaultACSClientContextFactory,
-    resource: [{ resource: 'mutation.withdrawOrder' }],
+    context: OrderingService.ACSContextFactory,
+    resource: [{ resource: 'execution.withdrawOrder' }],
     database: 'arangoDB',
     useCache: true,
   })
@@ -1356,7 +1356,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
-    context: DefaultACSClientContextFactory,
+    context: OrderingService.ACSContextFactory,
     resource: [{ resource: 'execution.cancelOrders' }],
     database: 'arangoDB',
     useCache: true,
@@ -1581,7 +1581,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.CREATE,
     operation: Operation.isAllowed,
-    context: DefaultACSClientContextFactory,
+    context: OrderingService.ACSContextFactory,
     resource: [{ resource: 'fulfillment'}],
     database: 'arangoDB',
     useCache: true,
@@ -1631,9 +1631,9 @@ export class OrderingService
   }
 
   @access_controlled_function({
-    action: AuthZAction.CREATE,
+    action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
-    context: DefaultACSClientContextFactory,
+    context: OrderingService.ACSContextFactory,
     resource: [{ resource: 'fulfillment' }],
     database: 'arangoDB',
     useCache: true,
@@ -1885,7 +1885,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.CREATE,
     operation: Operation.isAllowed,
-    context: DefaultACSClientContextFactory,
+    context: OrderingService.ACSContextFactory,
     resource: [{ resource: 'invoice' }],
     database: 'arangoDB',
     useCache: true,
@@ -1939,7 +1939,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
-    context: DefaultACSClientContextFactory,
+    context: OrderingService.ACSContextFactory,
     resource: [{ resource: 'invoice' }],
     database: 'arangoDB',
     useCache: true,
