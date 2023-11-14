@@ -9,7 +9,7 @@
   },
   "client": {
     "order": {
-      "address": "localhost:50051"
+      "address": "localhost:50065"
     },
     "acs-srv": {
       "address": "localhost:50061",
@@ -25,7 +25,7 @@
       }
     },
     "user": {
-      "address": "localhost:50065",
+      "address": "localhost:50062",
       "mock": {
         "protoPath": "io/restorecommerce/user.proto",
         "packageName": "io.restorecommerce.user",
