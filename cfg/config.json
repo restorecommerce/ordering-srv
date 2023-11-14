@@ -238,9 +238,10 @@
     "service": "acs-srv",
     "enabled": true,
     "enforce": true,
+    "database": "arangoDB",
     "urns": {
       "entity": "urn:restorecommerce:acs:names:model:entity",
-      "order": "urn:restorecommerce:acs:model:order.Order",
+      "user": "urn:restorecommerce:acs:model:user.User",
       "model": "urn:restorecommerce:acs:model",
       "role": "urn:restorecommerce:acs:names:role",
       "roleScopingEntity": "urn:restorecommerce:acs:names:roleScopingEntity",

@@ -97,36 +97,6 @@ const mainMeta = {
         }
       ]
     },
-    {
-      id: 'urn:restorecommerce:acs:names:ownerInstance',
-      value: 'main',
-      attributes: []
-    }
-  ]
-};
-
-const subMeta = {
-  modifiedBy: 'SYSTEM',
-  acls: [],
-  created: new Date(),
-  modified: new Date(),
-  owners: [
-    {
-      id: 'urn:restorecommerce:acs:names:ownerIndicatoryEntity',
-      value: 'urn:restorecommerce:acs:model:organization.Organization',
-      attributes: [
-        {
-          id: 'urn:restorecommerce:acs:names:ownerInstance',
-          value: 'sub',
-          attributes: []
-        }
-      ]
-    },
-    {
-      id: 'urn:restorecommerce:acs:names:ownerInstance',
-      value: 'sub',
-      attributes: []
-    }
   ]
 };
 
@@ -387,7 +357,6 @@ const validOrders: { [key: string]: OrderList } = {
         },
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
-        meta: mainMeta,
       }
     ],
     totalCount: 1,
@@ -420,7 +389,6 @@ const validOrders: { [key: string]: OrderList } = {
         },
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
-        meta: subMeta,
       }
     ],
     totalCount: 1,
@@ -456,7 +424,6 @@ const invalidOrders: { [key: string]: OrderList } = {
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
         orderState: OrderState.CREATED,
-        meta: mainMeta,
       }
     ],
     totalCount: 1,
@@ -489,7 +456,6 @@ const invalidOrders: { [key: string]: OrderList } = {
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
         orderState: OrderState.CREATED,
-        meta: subMeta,
       }
     ],
     totalCount: 1,

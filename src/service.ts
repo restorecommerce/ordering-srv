@@ -12,7 +12,8 @@ import {
   access_controlled_function,
   access_controlled_service,
   DefaultACSClientContextFactory,
-  Operation
+  injects_meta_data,
+  Operation,
 } from '@restorecommerce/acs-client';
 import {
   ResourcesAPIBase,
@@ -1168,6 +1169,7 @@ export class OrderingService
     return super.read(request, context);
   }
 
+  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.CREATE,
     operation: Operation.isAllowed,
@@ -1182,7 +1184,7 @@ export class OrderingService
   ) {
     request?.items?.forEach(
       item => {
-        if (item.order_state === OrderState.UNRECOGNIZED) {
+        if (!item.order_state || item.order_state === OrderState.UNRECOGNIZED) {
           item.order_state = OrderState.CREATED;
         }
       }
@@ -1205,6 +1207,7 @@ export class OrderingService
     return super.update(request, context);
   }
 
+  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
@@ -1217,6 +1220,13 @@ export class OrderingService
     request: OrderList,
     context?: any
   ) {
+    request?.items?.forEach(
+      item => {
+        if (!item.order_state || item.order_state === OrderState.UNRECOGNIZED) {
+          item.order_state = OrderState.CREATED;
+        }
+      }
+    );
     return super.upsert(request, context);
   }
 
@@ -1244,6 +1254,7 @@ export class OrderingService
     }
   }
 
+  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
