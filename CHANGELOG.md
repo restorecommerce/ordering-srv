@@ -1,3 +1,9 @@
+## 0.0.13 (November 15th, 2023)
+
+- add default meta injector for create, upsert and submit
+- fix ResorceFactory to provide resource ids for target
+- upgrade deps
+
 ## 0.0.12 (October 28th, 2023)
 
 - configure unautheticated tech user
