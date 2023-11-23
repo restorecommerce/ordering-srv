@@ -202,13 +202,32 @@
       "address": "localhost:50063"
     },
     "fulfillment": {
-      "address": "localhost:50067"
+      "disable": false,
+      "address": "localhost:50067",
+      "createOnSubmit": true,
+      "cleanupPostSubmit": true,
+      "users": {
+        "fulfillment_tech_user": {
+          "id": "fulfillment_tech_user",
+          "token": "jrj29SS0Ui7GlQKPvkS8ReEa48R33OH9"
+        }
+      }
     },
     "fulfillment_product": {
+      "disable": false,
       "address": "localhost:50067"
     },
     "invoice": {
-      "address": "localhost:50077"
+      "disable": true,
+      "address": "localhost:50077",
+      "createOnSubmit": true,
+      "cleanupPostSubmit": true,
+      "users": {
+        "invoice_tech_user": {
+          "id": "invoice_tech_user",
+          "token": "Bpn5g9V17KJ1O3tC6OcnLEqdG8N9mwjH"
+        }
+      }
     }
   },
   "server": {
@@ -227,18 +246,20 @@
     "health":  "grpc-health-v1"
   },
   "urns": {
-    "instanceType": "urn:restorecommerce:ordering:Order",
-    "roleScopingEntity": "urn:restorecommerce:acs:names:model:entity",
-    "roleScopingInstance": "urn:oasis:names:tc:xacml:1.0:resource:resource-id",
-    "organization": "urn:restorecommerce:acs:model:organization:Organization",
-    "ownerIndicatoryEntity": "urn:restorecommerce:acs:names:ownerIndicatoryEntity",
-    "ownerIndicatoryInstance": "urn:restorecommerce:acs:names:ownerInstance"
+    "instanceType": "urn:restorecommerce:acs:model:order:Order",
+    "disableFulfillment": "urn:restorecommerce:order:preferences:disableFulfillment",
+    "disableInvoice": "urn:restorecommerce:order:preferences:disableInvoice"
   },
   "authorization": {
     "service": "acs-srv",
     "enabled": true,
     "enforce": true,
     "database": "arangoDB",
+    "client": {
+      "acs-srv": {
+        "address": "localhost:50061"
+      }
+    },
     "urns": {
       "entity": "urn:restorecommerce:acs:names:model:entity",
       "user": "urn:restorecommerce:acs:model:user.User",
@@ -276,9 +297,11 @@
       "ttl": 3600,
       "prefix": "acs:"
     },
-    "unauthenticated_user": {
-      "id": "unauthenticated_user",
-      "token": "2ce88810e1a8463fa14c8bc6cfa12345"
+    "users": {
+      "unauthenticated_user": {
+        "id": "unauthenticated_user",
+        "token": "2ce88810e1a8463fa14c8bc6cfa12345"
+      }
     }
   },
   "statusCodes": {

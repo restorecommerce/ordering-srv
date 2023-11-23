@@ -145,8 +145,8 @@ describe('The Ordering Service:', () => {
         '\n' + JSON.stringify(response.operationStatus, null, 2),
       );
       should.ok(
-        !response.items?.some(item => item.status?.code !== 200),
-        'response.items[*].status.code expected all to be 200',
+        !response.orders?.some(item => item.status?.code !== 200),
+        'response.orders[*].status.code expected all to be 200',
       );
     });
 
@@ -166,8 +166,8 @@ describe('The Ordering Service:', () => {
         '\n' + JSON.stringify(response.operationStatus, null, 2),
       );
       should.ok(
-        !response.items?.some(item => item.status?.code === 200),
-        'response.items[*].status.code expected all NOT to be 200',
+        !response.orders?.some(item => item.status?.code === 200),
+        'response.orders[*].status.code expected all NOT to be 200',
       );
     });
   }

@@ -14,6 +14,8 @@ import {
   DefaultACSClientContextFactory,
   injects_meta_data,
   Operation,
+  DefaultResourceFacorty,
+  DefaultMetaDataInjector,
 } from '@restorecommerce/acs-client';
 import {
   ResourcesAPIBase,
@@ -33,6 +35,7 @@ import {
   OrderServiceImplementation,
   OrderingInvoiceRequestList,
   FulfillmentInvoiceMode,
+  OrderSubmitListResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order';
 import {
   PhysicalProduct,
@@ -153,7 +156,10 @@ export class OrderingService
     return {
       ...context,
       subject: request.subject,
-      resources,
+      resources: [
+        ...resources.items ?? [],
+        ...request.items ?? [],
+      ],
     };
   }
 
@@ -206,8 +212,10 @@ export class OrderingService
   };
 
   protected readonly emitters: any;
-  protected readonly instance_type: string;
   protected readonly legal_address_type_id: string;
+  protected readonly unauthenticated_user: Subject;
+  protected readonly fulfillment_tech_user: Subject;
+  protected readonly invoice_tech_user: Subject;
   protected readonly product_service: Client<ProductServiceDefinition>;
   protected readonly tax_service: Client<TaxServiceDefinition>;
   protected readonly customer_service: Client<CustomerServiceDefinition>;
@@ -219,6 +227,13 @@ export class OrderingService
   protected readonly fulfillment_service: Client<FulfillmentServiceDefinition>;
   protected readonly fulfillment_product_service: Client<FulfillmentProductServiceDefinition>;
   protected readonly invoice_service: Client<InvoiceServiceDefinition>;
+  protected readonly creates_fulfillments_on_submit: boolean;
+  protected readonly creates_invoices_on_submit: boolean;
+  protected readonly cleanup_fulfillments_post_submit: boolean;
+  protected readonly cleanup_invoices_post_submit: boolean;
+  protected readonly urn_instance_type: string;
+  protected readonly urn_disable_fulfillment: string;
+  protected readonly urn_disable_invoice: string;
 
   get entityName() {
     return this.name;
@@ -229,7 +244,7 @@ export class OrderingService
   }
 
   get instanceType() {
-    return this.instance_type;
+    return this.urn_instance_type;
   }
 
   constructor(
@@ -263,9 +278,12 @@ export class OrderingService
       ...cfg.get('operationStatusCodes'),
     };
 
-    this.legal_address_type_id = cfg.get('preDefinedIds:legalAddressTypeId');// ?? 'legal_address';
-    this.instance_type = cfg.get('urns:instanceType');
     this.emitters = cfg.get('events:emitters');
+    this.urn_instance_type = cfg.get('urns:instanceType');
+    this.urn_disable_fulfillment = cfg.get('urns:disableFulfillment');
+    this.urn_disable_invoice = cfg.get('urns:disableInvoice');
+    this.legal_address_type_id = cfg.get('preDefinedIds:legalAddressTypeId') ?? 'legal_address';
+    this.unauthenticated_user = cfg.get('authentication:users:unauthenticated_user');
 
     this.product_service = createClient(
       {
@@ -341,7 +359,10 @@ export class OrderingService
 
     // optional Fulfillment
     const fulfillment_cfg = cfg.get('client:fulfillment');
-    if (fulfillment_cfg) {
+    if (fulfillment_cfg && !fulfillment_cfg.disabled) {
+      this.creates_fulfillments_on_submit = fulfillment_cfg.createOnSubmit;
+      this.cleanup_fulfillments_post_submit = fulfillment_cfg.cleanupPostSubmit;
+      this.fulfillment_tech_user = fulfillment_cfg.users?.fulfillment_tech_user;
       this.fulfillment_service = createClient(
         {
           ...fulfillment_cfg,
@@ -356,7 +377,7 @@ export class OrderingService
     }
 
     const fulfillment_product_cfg = cfg.get('client:fulfillment_product');
-    if (fulfillment_product_cfg) {
+    if (fulfillment_product_cfg && !fulfillment_product_cfg.disabled) {
       this.fulfillment_product_service = createClient(
         {
           ...fulfillment_product_cfg,
@@ -371,7 +392,10 @@ export class OrderingService
     }
 
     const invoicing_cfg = cfg.get('client:invoice');
-    if (cfg.get('client:invoice')) {
+    if (invoicing_cfg && !invoicing_cfg.disabled) {
+      this.creates_invoices_on_submit = invoicing_cfg.createOnSubmit;
+      this.cleanup_invoices_post_submit = invoicing_cfg.cleanupPostSubmit;
+      this.invoice_tech_user = invoicing_cfg.users?.invoice_tech_user;
       this.invoice_service = createClient(
         {
           ...invoicing_cfg,
@@ -1174,7 +1198,7 @@ export class OrderingService
     action: AuthZAction.CREATE,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: [{ resource: 'order' }],
+    resource: DefaultResourceFacorty('order'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1196,7 +1220,7 @@ export class OrderingService
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: [{ resource: 'order' }],
+    resource: DefaultResourceFacorty('order'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1212,7 +1236,7 @@ export class OrderingService
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: [{ resource: 'order' }],
+    resource: DefaultResourceFacorty('order'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1259,15 +1283,44 @@ export class OrderingService
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: [{ resource: 'execution.submitOrders' }],
+    resource: DefaultResourceFacorty('execution.submitOrders'),
     database: 'arangoDB',
     useCache: true,
   })
   public async submit(
     request: OrderList,
     context?: any
-  ): Promise<OrderListResponse> {
+  ): Promise<OrderSubmitListResponse> {
     try {
+      const unauthenticated = !request.subject?.id?.length || request.subject?.id === this.unauthenticated_user?.id;
+      
+      if(unauthenticated) {
+        await super.read(
+          {
+            filters: [
+              {
+                filters: [
+                  {
+                    field: 'id',
+                    operation: Filter_Operation.in,
+                    value: JSON.stringify(request.items?.map(item => item.id)),
+                    type: Filter_ValueType.ARRAY,
+                  }
+                ],
+                operator: FilterOp_Operator.and,
+              }
+            ]
+          },
+          context,
+        ).then(
+          response => {
+            if (response.items?.length) {
+              throw '';
+            }
+          }
+        );
+      }
+
       const responseMap = request.items.reduce(
         (a, b) => {
           a[b.id] = {};
@@ -1317,6 +1370,161 @@ export class OrderingService
         }
       );
 
+      const response: OrderSubmitListResponse = {
+        orders: orders.items,
+        operation_status: orders.operation_status,
+      };
+
+      if (this.creates_fulfillments_on_submit) {
+        response.fulfillments = await this.createFulfillment(
+          {
+            items: orders.items?.filter(
+              order => order.status?.code === 200
+                ?? order.payload?.packaging_preferences?.options?.find(
+                  att => att.id === this.urn_disable_fulfillment
+                )?.value === 'true'
+            ).map(
+              order => ({
+                order_id: order.payload?.id,
+              })
+            ),
+            subject: request.subject,
+          },
+          context,
+        ).then(
+          response => {
+            if (response.operation_status?.code === 200) {
+              return response.items;
+            }
+            else {
+              throw response.operation_status;
+            }
+          }
+        );
+
+        response.fulfillments.forEach(
+          fulfillment => {
+            const order = responseMap[fulfillment.payload?.reference?.instance_id];
+            if (fulfillment.status?.code !== 200 && order) {
+              order.payload = {
+                ...order.payload,
+                order_state: OrderState.INVALID
+              };
+              order.status = {
+                ...fulfillment.status,
+                id: order.payload?.id ?? order.status?.id,
+              }
+            }
+          }
+        );
+      }
+
+      if (this.creates_invoices_on_submit) {
+        response.invoices = await this.createInvoice(
+          {
+            items: orders.items?.filter(
+              order => order.status.code === 200
+                ?? order.payload?.packaging_preferences?.options?.find(
+                  att => att.id === this.urn_disable_invoice
+                )?.value === 'true'
+            ).map(
+              order => ({
+                sections: [
+                  {
+                    order_id: order.payload?.id,
+                    fulfillment_mode: FulfillmentInvoiceMode.INCLUDE
+                  }
+                ]
+              })
+            ),
+            subject: request.subject,
+          },
+          context,
+        ).then(
+          response => {
+            if (response.operation_status?.code === 200) {
+              return response.items;
+            }
+            else {
+              throw response.operation_status;
+            }
+          }
+        );
+
+        response.invoices.forEach(
+          invoice => {
+            invoice.payload?.references.forEach(
+              reference => {
+                const order = responseMap[reference.instance_id];
+                if (invoice.status?.code !== 200 && order) {
+                  order.payload = {
+                    ...order.payload,
+                    order_state: OrderState.INVALID
+                  };
+                  order.status = {
+                    ...invoice.status,
+                    id: order.payload?.id ?? order.status?.id,
+                  }
+                }
+              } 
+            );
+          }
+        );
+      }
+
+      const failed_order_ids = orders.items.filter(
+        order => order.status?.code !== 200
+      ).map(
+        order => order.payload?.id ?? order.status?.id
+      );
+
+      if (this.cleanup_fulfillments_post_submit) {
+        const failed_fulfillment_ids = response.fulfillments.filter(
+          fulfillment => fulfillment.payload?.reference.instance_id in failed_order_ids
+        ).map(
+          fulfillment => fulfillment.payload?.id
+        );
+
+        if (failed_fulfillment_ids.length) {
+          await this.fulfillment_service?.delete(
+            { 
+              ids: failed_fulfillment_ids,
+              subject: this.fulfillment_tech_user,
+            },
+            context,
+          );
+        }
+      }
+
+      if (this.cleanup_invoices_post_submit) {
+        const failed_invoice_ids = response.invoices.filter(
+          invoice => invoice.payload?.references?.find(
+            reference => reference.instance_id in failed_order_ids
+          )
+        ).map(
+          invoice => invoice.payload?.id
+        );
+
+        if (failed_invoice_ids.length) {
+          await this.invoice_service?.delete(
+            { 
+              ids: failed_invoice_ids,
+              subject: this.invoice_tech_user,
+            },
+            context,
+          );
+        }
+      }
+
+      if (unauthenticated && failed_order_ids.length) {
+        await super.delete(
+          {
+            ids: failed_order_ids
+          },
+          context,
+        );
+      }
+
       Object.values(responseMap).forEach(
         item => {
           if (
@@ -1333,11 +1541,7 @@ export class OrderingService
         }
       );
 
-      return {
-        items: Object.values(responseMap),
-        total_count: request.total_count,
-        operation_status: orders.operation_status,
-      } as OrderListResponse;
+      return response;
     }
     catch (e) {
       return this.catchOperationError(e);
@@ -1348,7 +1552,7 @@ export class OrderingService
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: [{ resource: 'execution.withdrawOrder' }],
+    resource: DefaultResourceFacorty('execution.withdrawOrder'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1368,7 +1572,7 @@ export class OrderingService
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: [{ resource: 'execution.cancelOrders' }],
+    resource: DefaultResourceFacorty('execution.cancelOrders'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1494,6 +1698,14 @@ export class OrderingService
     };
   }
 
+  @access_controlled_function({
+    action: AuthZAction.READ,
+    operation: Operation.whatIsAllowed,
+    context: DefaultACSClientContextFactory,
+    resource: [{ resource: 'order' }],
+    database: 'arangoDB',
+    useCache: true,
+  })
   public async queryPackingSolution(
     request: FulfillmentRequestList,
     context?: any,
@@ -1568,11 +1780,11 @@ export class OrderingService
           payload:
             status?.code === 200 ?
               {
+                reference: {
+                  instance_type: this.instanceType,
+                  instance_id: item.order_id,
+                },
                 packaging: {
-                  reference: {
-                    instance_type: this.instanceType,
-                    instance_id: item.order_id,
-                  },
                   parcels: solution.solutions[0].parcels,
                   notify: order.payload.notification_email,
                   export_type: item.export_type,
@@ -1590,10 +1802,10 @@ export class OrderingService
   }
 
   @access_controlled_function({
-    action: AuthZAction.CREATE,
+    action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: [{ resource: 'fulfillment'}],
+    resource: DefaultResourceFacorty('execution.createFulfillment'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1606,20 +1818,28 @@ export class OrderingService
         request,
         context
       );
+
       const invalids = prototypes.filter(
         proto => proto.status?.code !== 200
       );
-      const valids = prototypes.filter(
-        proto => proto.status?.code === 200
-      ).map(
-        proto => proto.payload
+
+      const valids = await DefaultMetaDataInjector(
+        this,
+        {
+          items: prototypes.filter(
+            proto => proto.status?.code === 200
+          ).map(
+            proto => proto.payload
+          ),
+          subject: request.subject,
+        }
       );
 
       const response = await this.fulfillment_service.create(
         {
-          items: valids,
-          total_count: valids.length,
-          subject: request.subject,
+          items: valids.items,
+          total_count: valids.items.length ?? 0,
+          subject: this.fulfillment_tech_user ?? request.subject,
         },
         context
       );
@@ -1645,7 +1865,7 @@ export class OrderingService
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: [{ resource: 'fulfillment' }],
+    resource: DefaultResourceFacorty('execution.triggerFulfillment'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1680,11 +1900,14 @@ export class OrderingService
         }
       );
 
-      const fulfillmentList = {
-        items,
-        total_count: items.length,
-        subject: request.subject
-      } as FulfillmentList;
+      const fulfillmentList = DefaultMetaDataInjector(
+        this,
+        {
+          items,
+          total_count: items.length,
+          subject: request.subject
+        } as FulfillmentList
+      );
 
       this.logger.debug('Emit Fulfillment request', fulfillmentList);
       await this.topic.emit(this.emitters['CREATE_FULFILLMENT'] ?? CREATE_FULFILLMENT, fulfillmentList);

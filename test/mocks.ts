@@ -52,7 +52,7 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/customer';
 import {
   FulfillmentListResponse,
-  State as FulfillmentState
+  FulfillmentResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment';
 import {
   OperationStatus
@@ -930,25 +930,14 @@ export const rules = {
       call: any,
       callback: (error: any, response: DeepPartial<FulfillmentListResponse>) => void,
     ) => callback(null, {
-      items: [
-        {
-          payload: {
-            id: 'fulfillment_1',
-            state: FulfillmentState.CREATED,
-            packaging: {
-              parcels: []
-            },
-            labels: [],
-            totalAmounts: [],
-            trackings: [],
-          },
+      items: call.request.items.map(
+        (item: FulfillmentResponse) => ({
+          payload: item,
           status: {
-            id: 'fulfillment_1',
             code: 200,
-            message: 'OK',
           }
-        }
-      ],
+        })
+      ),
       totalCount: 1,
       operationStatus
     }),

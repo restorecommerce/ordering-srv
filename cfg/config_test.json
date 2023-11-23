@@ -181,6 +181,7 @@
       }
     },
     "invoice": {
+      "disabled": true,
       "address": "localhost:50077",
       "mock": {
         "protoPath": "io/restorecommerce/invoice.proto",
