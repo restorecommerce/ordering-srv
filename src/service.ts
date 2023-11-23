@@ -1293,7 +1293,7 @@ export class OrderingService
   ): Promise<OrderSubmitListResponse> {
     try {
       const unauthenticated = !request.subject?.id?.length || request.subject?.id === this.unauthenticated_user?.id;
-      
+
       if(unauthenticated) {
         await super.read(
           {
@@ -1413,7 +1413,7 @@ export class OrderingService
               order.status = {
                 ...fulfillment.status,
                 id: order.payload?.id ?? order.status?.id,
-              }
+              };
             }
           }
         );
@@ -1464,9 +1464,9 @@ export class OrderingService
                   order.status = {
                     ...invoice.status,
                     id: order.payload?.id ?? order.status?.id,
-                  }
+                  };
                 }
-              } 
+              }
             );
           }
         );
@@ -1487,7 +1487,7 @@ export class OrderingService
 
         if (failed_fulfillment_ids.length) {
           await this.fulfillment_service?.delete(
-            { 
+            {
               ids: failed_fulfillment_ids,
               subject: this.fulfillment_tech_user,
             },
@@ -1507,7 +1507,7 @@ export class OrderingService
 
         if (failed_invoice_ids.length) {
           await this.invoice_service?.delete(
-            { 
+            {
               ids: failed_invoice_ids,
               subject: this.invoice_tech_user,
             },
