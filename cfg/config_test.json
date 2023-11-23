@@ -155,6 +155,7 @@
       }
     },
     "fulfillment": {
+      "disabled": false,
       "address": "localhost:50075",
       "mock": {
         "protoPath": "io/restorecommerce/fulfillment.proto",
@@ -168,6 +169,7 @@
       }
     },
     "fulfillment_product": {
+      "disabled": false,
       "address": "localhost:50076",
       "mock": {
         "protoPath": "io/restorecommerce/fulfillment_product.proto",
