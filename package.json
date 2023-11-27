@@ -2,7 +2,7 @@
   "name": "@restorecommerce/ordering-srv",
   "version": "0.0.12",
   "description": "Restore Commerce microservice for managing orders",
-  "main": "./lib/index.js",
+  "main": "./lib/start.js",
   "author": "n-fuse GmbH",
   "repository": {
     "type": "git",
@@ -52,6 +52,9 @@
     "ts-proto": "^1.164.0",
     "tslint": "^6.1.3",
     "typescript": "^4.9.5"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.9.11"
   },
   "scripts": {
     "build": "npm-run-all lint build:clean build:tsc",
