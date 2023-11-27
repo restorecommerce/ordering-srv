@@ -95,16 +95,23 @@
       "createInvoices": {
         "messageObject": "io.restorecommerce.order.InvoiceRequestList"
       },
+
       "restoreCommand": {
         "messageObject": "io.restorecommerce.commandinterface.CommandRequest"
-      },
-      "restoreResponse": {
-        "messageObject": "io.restorecommerce.commandinterface.CommandResponse"
       },
       "healthCheckCommand": {
         "messageObject": "io.restorecommerce.commandinterface.CommandRequest"
       },
+      "resetCommand": {
+        "messageObject": "io.restorecommerce.commandinterface.CommandRequest"
+      },
       "healthCheckResponse": {
+        "messageObject": "io.restorecommerce.commandinterface.CommandResponse"
+      },
+      "resetResponse": {
+        "messageObject": "io.restorecommerce.commandinterface.CommandResponse"
+      },
+      "restoreResponse": {
         "messageObject": "io.restorecommerce.commandinterface.CommandResponse"
       },
       "versionCommand": {
@@ -113,15 +120,25 @@
       "versionResponse": {
         "messageObject": "io.restorecommerce.commandinterface.CommandResponse"
       },
-      "resetCommand": {
+      "configUpdateCommand": {
         "messageObject": "io.restorecommerce.commandinterface.CommandRequest"
       },
-      "resetResponse": {
+      "configUpdateResponse": {
         "messageObject": "io.restorecommerce.commandinterface.CommandResponse"
       },
-      "renderRequest": {
-        "messageObject": "io.restorecommerce.rendering.RenderRequest"
+      "setApiKeyCommand": {
+        "messageObject": "io.restorecommerce.commandinterface.CommandRequest"
       },
+      "setApiKeyResponse": {
+        "messageObject": "io.restorecommerce.commandinterface.CommandResponse"
+      },
+      "flushCacheCommand": {
+        "messageObject": "io.restorecommerce.commandinterface.CommandRequest"
+      },
+      "flushCacheResponse": {
+        "messageObject": "io.restorecommerce.commandinterface.CommandResponse"
+      },
+
       "topics": {
         "command": {
           "topic": "io.restorecommerce.command",

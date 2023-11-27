@@ -14,7 +14,7 @@ import {
   DefaultACSClientContextFactory,
   injects_meta_data,
   Operation,
-  DefaultResourceFacorty,
+  DefaultResourceFactory,
   DefaultMetaDataInjector,
 } from '@restorecommerce/acs-client';
 import {
@@ -1198,7 +1198,7 @@ export class OrderingService
     action: AuthZAction.CREATE,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: DefaultResourceFacorty('order'),
+    resource: DefaultResourceFactory('order'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1220,7 +1220,7 @@ export class OrderingService
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: DefaultResourceFacorty('order'),
+    resource: DefaultResourceFactory('order'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1236,7 +1236,7 @@ export class OrderingService
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: DefaultResourceFacorty('order'),
+    resource: DefaultResourceFactory('order'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1283,7 +1283,7 @@ export class OrderingService
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: DefaultResourceFacorty('execution.submitOrders'),
+    resource: DefaultResourceFactory('execution.submitOrders'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1404,17 +1404,22 @@ export class OrderingService
 
         response.fulfillments.forEach(
           fulfillment => {
-            const order = responseMap[fulfillment.payload?.reference?.instance_id];
-            if (fulfillment.status?.code !== 200 && order) {
-              order.payload = {
-                ...order.payload,
-                order_state: OrderState.INVALID
-              };
-              order.status = {
-                ...fulfillment.status,
-                id: order.payload?.id ?? order.status?.id,
-              };
-            }
+            fulfillment.payload?.references?.forEach(
+              reference => {
+                const order = responseMap[reference.instance_id];
+                if (fulfillment.status?.code !== 200 && order) {
+                  order.payload = {
+                    ...order.payload,
+                    order_state: OrderState.INVALID
+                  };
+                  order.status = {
+                    ...fulfillment.status,
+                    id: order.payload?.id ?? order.status?.id,
+                  };
+                }
+              }
+            );
+
           }
         );
       }
@@ -1480,7 +1485,9 @@ export class OrderingService
 
       if (this.cleanup_fulfillments_post_submit) {
         const failed_fulfillment_ids = response.fulfillments.filter(
-          fulfillment => fulfillment.payload?.reference.instance_id in failed_order_ids
+          fulfillment => fulfillment.payload?.references?.find(
+            reference => reference.instance_id in failed_order_ids
+          )
         ).map(
           fulfillment => fulfillment.payload?.id
         );
@@ -1552,7 +1559,7 @@ export class OrderingService
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: DefaultResourceFacorty('execution.withdrawOrder'),
+    resource: DefaultResourceFactory('execution.withdrawOrder'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1572,7 +1579,7 @@ export class OrderingService
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: DefaultResourceFacorty('execution.cancelOrders'),
+    resource: DefaultResourceFactory('execution.cancelOrders'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1776,14 +1783,14 @@ export class OrderingService
           message: `Order ${item.order_id} not found!`,
         } as Status;
 
-        return {
+        const fulfillment: FulfillmentResponse = {
           payload:
             status?.code === 200 ?
               {
-                reference: {
+                references: [{
                   instance_type: this.instanceType,
                   instance_id: item.order_id,
-                },
+                }],
                 packaging: {
                   parcels: solution.solutions[0].parcels,
                   notify: order.payload.notification_email,
@@ -1796,7 +1803,9 @@ export class OrderingService
                 total_amounts: solution.solutions[0].amounts,
               } : null,
           status,
-        } as FulfillmentResponse;
+        };
+
+        return fulfillment;
       }
     );
   }
@@ -1805,7 +1814,7 @@ export class OrderingService
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: DefaultResourceFacorty('execution.createFulfillment'),
+    resource: DefaultResourceFactory('execution.createFulfillment'),
     database: 'arangoDB',
     useCache: true,
   })
@@ -1865,7 +1874,7 @@ export class OrderingService
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService.ACSContextFactory,
-    resource: DefaultResourceFacorty('execution.triggerFulfillment'),
+    resource: DefaultResourceFactory('execution.triggerFulfillment'),
     database: 'arangoDB',
     useCache: true,
   })

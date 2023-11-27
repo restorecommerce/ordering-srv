@@ -168,8 +168,9 @@ export class Worker {
       );
     },
     handleFulfillmentSubmitted: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      if (msg?.reference?.instance_type !== this.orderingService.instanceType) return;
-      const ids = [msg?.reference?.instance_id];
+      const refs = msg?.references?.filter(ref => ref.instance_type === this.orderingService.instanceType);
+      if (!refs?.length) return;
+      const ids = refs?.map(ref => ref.instance_id);
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.IN_PROCESS, subject, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
@@ -177,8 +178,9 @@ export class Worker {
       );
     },
     handleFulfillmentInvalid: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      if (msg?.reference?.instance_type !== this.orderingService.instanceType) return;
-      const ids = [msg?.reference?.instance_id];
+      const refs = msg?.references?.filter(ref => ref.instance_type === this.orderingService.instanceType);
+      if (!refs?.length) return;
+      const ids = refs?.map(ref => ref.instance_id);
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.INVALID, subject, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
@@ -186,8 +188,9 @@ export class Worker {
       );
     },
     handleFulfillmentFulfilled: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      if (msg?.reference?.instance_type !== this.orderingService.instanceType) return;
-      const ids = [msg?.reference?.instance_id];
+      const refs = msg?.references?.filter(ref => ref.instance_type === this.orderingService.instanceType);
+      if (!refs?.length) return;
+      const ids = refs?.map(ref => ref.instance_id);
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.DONE, subject, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
@@ -195,8 +198,9 @@ export class Worker {
       );
     },
     handleFulfillmentFailed: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      if (msg?.reference?.instance_type !== this.orderingService.instanceType) return;
-      const ids = [msg?.reference?.instance_id];
+      const refs = msg?.references?.filter(ref => ref.instance_type === this.orderingService.instanceType);
+      if (!refs?.length) return;
+      const ids = refs?.map(ref => ref.instance_id);
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.FAILED, subject, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
@@ -204,8 +208,9 @@ export class Worker {
       );
     },
     handleFulfillmentWithdrawn: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      if (msg?.reference?.instance_type !== this.orderingService.instanceType) return;
-      const ids = [msg?.reference.instance_id];
+      const refs = msg?.references?.filter(ref => ref.instance_type === this.orderingService.instanceType);
+      if (!refs?.length) return;
+      const ids = refs?.map(ref => ref.instance_id);
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.CANCELLED, subject, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
@@ -213,8 +218,9 @@ export class Worker {
       );
     },
     handleFulfillmentCancelled: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      if (msg?.reference?.instance_type !== this.orderingService.instanceType) return;
-      const ids = [msg?.reference.instance_id];
+      const refs = msg?.references?.filter(ref => ref.instance_type === this.orderingService.instanceType);
+      if (!refs?.length) return;
+      const ids = refs?.map(ref => ref.instance_id);
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.CANCELLED, subject, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
@@ -235,7 +241,12 @@ export class Worker {
   async start(cfg?: ServiceConfig, logger?: Logger): Promise<any> {
     // Load config
     this._cfg = cfg = cfg ?? createServiceConfig(process.cwd());
-    this.logger = logger = logger ?? createLogger(cfg.get('logger'));
+    const logger_cfg = cfg.get('logger') ?? {};
+    logger_cfg.esTransformer = (msg: any) => {
+      msg.fields = JSON.stringify(msg.fields);
+      return msg;
+    };
+    this.logger = logger = logger ?? createLogger(logger_cfg);
 
     // get database connection
     const db = await database.get(cfg.get('database:main'), logger);
