@@ -1,3 +1,12 @@
+## 0.0.15 (November 27th, 2023)
+
+- bump deps
+
+## 0.0.14 (November 23rd, 2023)
+
+- combo execution on submit includes create fulfillment and invoice
+- create fulfillment and invoice disabled in config
+
 ## 0.0.13 (November 15th, 2023)
 
 - add default meta injector for create, upsert and submit
