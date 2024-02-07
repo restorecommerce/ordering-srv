@@ -1,6 +1,6 @@
 {
   "name": "@restorecommerce/ordering-srv",
-  "version": "0.0.12",
+  "version": "0.0.15",
   "description": "Restore Commerce microservice for managing orders",
   "main": "./lib/start.js",
   "author": "n-fuse GmbH",
@@ -66,7 +66,7 @@
     "mocha": "cross-env NODE_ENV=test node_modules/.bin/mocha --full-trace --exit",
     "start": "node lib/start.js",
     "test": "nyc npm run mocha",
-    "test-debug": "mocha -R spec ./test/*.js --inspect-brk",
+    "test-debug": "mocha -R spec ./test/*.ts --inspect-brk",
     "tsctests": "tsc -d -p tsconfig.test.json"
   },
   "engines": {

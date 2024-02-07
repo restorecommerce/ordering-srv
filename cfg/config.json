@@ -1,4 +1,12 @@
 {
+  "logger": {
+    "console": {
+      "handleExceptions": false,
+      "level": "silly",
+      "colorize": true,
+      "prettyPrint": true
+    }
+  },
   "database": {
     "main": {
       "provider": "arango",
@@ -23,14 +31,6 @@
       "db-offsetStore": 0,
       "db-subject": 4,
       "db-orderStore": 9
-    }
-  },
-  "logger": {
-    "console": {
-      "handleExceptions": false,
-      "level": "silly",
-      "colorize": true,
-      "prettyPrint": true
     }
   },
   "fieldHandlers": {
@@ -195,28 +195,28 @@
       "address": "localhost:50068"
     },
     "contact_point": {
-      "address": "localhost:50063"
+      "address": "localhost:50053"
     },
     "address": {
-      "address": "localhost:50063"
+      "address": "localhost:50053"
     },
     "country": {
-      "address": "localhost:50063"
+      "address": "localhost:50053"
     },
     "tax": {
-      "address": "localhost:50063"
+      "address": "localhost:50053"
     },
     "tax_type": {
-      "address": "localhost:50063"
+      "address": "localhost:50053"
     },
     "customer": {
-      "address": "localhost:50063"
+      "address": "localhost:50053"
     },
     "shop": {
-      "address": "localhost:50063"
+      "address": "localhost:50053"
     },
     "organization": {
-      "address": "localhost:50063"
+      "address": "localhost:50053"
     },
     "fulfillment": {
       "disabled": true,
@@ -224,9 +224,9 @@
       "createOnSubmit": true,
       "cleanupPostSubmit": true,
       "users": {
-        "fulfillment_tech_user": {
-          "id": "fulfillment_tech_user",
-          "token": "jrj29SS0Ui7GlQKPvkS8ReEa48R33OH9"
+        "tech_user": {
+          "id": "tech-user",
+          "token": "123099ffc93b44f6b4a81b1e5589b642"
         }
       }
     },
@@ -240,9 +240,9 @@
       "createOnSubmit": true,
       "cleanupPostSubmit": true,
       "users": {
-        "invoice_tech_user": {
-          "id": "invoice_tech_user",
-          "token": "Bpn5g9V17KJ1O3tC6OcnLEqdG8N9mwjH"
+        "tech_user": {
+          "id": "tech_user",
+          "token": "123099ffc93b44f6b4a81b1e5589b642"
         }
       }
     }
@@ -260,7 +260,7 @@
     "ordering": "io-restorecommerce-ordering-srv",
     "reflection": "io-restorecommerce-ordering-reflection",
     "cis": "io-restorecommerce-ordering-cis",
-    "health":  "grpc-health-v1"
+    "health": "grpc-health-v1"
   },
   "urns": {
     "instanceType": "urn:restorecommerce:acs:model:order:Order",
@@ -313,12 +313,6 @@
       "db-index": 5,
       "ttl": 3600,
       "prefix": "acs:"
-    },
-    "users": {
-      "unauthenticated_user": {
-        "id": "unauthenticated_user",
-        "token": "2ce88810e1a8463fa14c8bc6cfa12345"
-      }
     }
   },
   "statusCodes": {
@@ -354,8 +348,8 @@
       "message": "SUCCESS"
     },
     "PARTIAL": {
-      "code": 400,
-      "message": "Patrial executed with errors!"
+      "code": 208,
+      "message": "Warning: Partially executed with errors!"
     },
     "LIMIT_EXHAUSTED": {
       "code": 500,
@@ -377,6 +371,6 @@
     }
   },
   "preDefinedIds": {
-    "legalAddressTypeId": "legal_address"
+    "legalAddressTypeId": "legal"
   }
 }

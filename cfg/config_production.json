@@ -1,7 +1,7 @@
 {
   "logger": {
     "elasticsearch": {
-      "level": "crit",
+      "level": "info",
       "clientOpts": {
         "node": "http://elasticsearch:9200"
       },
@@ -31,9 +31,6 @@
     }
   },
   "client": {
-    "acs-srv": {
-      "address": "access-control-srv:50051"
-    },
     "user": {
       "address": "identity-srv:50051"
     },
@@ -75,6 +72,11 @@
     }
   },
   "authorization": {
+    "client": {
+      "acs-srv": {
+        "address": "access-control-srv:50051"
+      }
+    },
     "cache": {
       "url": "redis://redis:6379"
     }

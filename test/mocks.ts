@@ -341,9 +341,6 @@ const validOrders: { [key: string]: OrderList } = {
             quantity: 4,
           }
         ],
-        userId: 'user_1',
-        customerId: 'customer_1',
-        shopId: 'shop_1',
         orderState: OrderState.CREATED,
         totalAmounts: [],
         notificationEmail: 'user@test.spec',
@@ -355,6 +352,9 @@ const validOrders: { [key: string]: OrderList } = {
           }],
           options: [],
         },
+        userId: 'user_1',
+        customerId: 'customer_1',
+        shopId: 'shop_1',
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
       }
@@ -424,9 +424,27 @@ const invalidOrders: { [key: string]: OrderList } = {
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
         orderState: OrderState.CREATED,
+      },
+      {
+        id: 'invalidOrder_2',
+        items: [],
+        userId: 'userId_1',
+        customerId: 'customerId_1',
+        shopId: 'invalid_shop_1',
+        notificationEmail: 'user@test.spec',
+        packagingPreferences: {
+          couriers: [{
+            id: 'name',
+            value: 'DHL',
+            attributes: [],
+          }],
+          options: [],
+        },
+        totalAmounts: [],
+        orderState: OrderState.CREATED,
       }
     ],
-    totalCount: 1,
+    totalCount: 2,
     subject: subjects.superadmin,
   },
   'as admin': {

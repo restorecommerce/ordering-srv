@@ -122,49 +122,49 @@ export class Worker {
     handleCreateOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
       return this.orderingService?.create(msg, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}:`, { error })
       );
     },
     handleUpdateOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
       return this.orderingService?.update(msg, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}: `, { error })
       );
     },
     handleUpsertOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
       return this.orderingService?.upsert(msg, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}: `, { error })
       );
     },
     handleSubmitOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
       return this.orderingService?.submit(msg, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}: `, { error })
       );
     },
     handleFulfillOrders: (msg: FulfillmentRequestList, context: any, config: any, eventName: string) => {
       return this.orderingService?.createFulfillment(msg, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}: `, { error })
       );
     },
     handleWithdrawOrders: (msg: OrderIdList, context: any, config: any, eventName: string) => {
       return this.orderingService?.withdraw(msg, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}: `, { error })
       );
     },
     handleCancelOrders: (msg: OrderIdList, context: any, config: any, eventName: string) => {
       return this.orderingService?.cancel(msg, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}: `, { error })
       );
     },
     handleDeleteOrders: (msg: any, context: any, config: any, eventName: string) => {
       return this.orderingService?.delete(msg, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}: `, { error })
       );
     },
     handleFulfillmentSubmitted: (msg: Fulfillment, context: any, config: any, eventName: string) => {
@@ -174,7 +174,7 @@ export class Worker {
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.IN_PROCESS, subject, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}: `, { error })
       );
     },
     handleFulfillmentInvalid: (msg: Fulfillment, context: any, config: any, eventName: string) => {
@@ -184,7 +184,7 @@ export class Worker {
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.INVALID, subject, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}: `, { error })
       );
     },
     handleFulfillmentFulfilled: (msg: Fulfillment, context: any, config: any, eventName: string) => {
@@ -194,7 +194,7 @@ export class Worker {
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.DONE, subject, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}: `, { error })
       );
     },
     handleFulfillmentFailed: (msg: Fulfillment, context: any, config: any, eventName: string) => {
@@ -204,7 +204,7 @@ export class Worker {
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.FAILED, subject, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}: `, { error })
       );
     },
     handleFulfillmentWithdrawn: (msg: Fulfillment, context: any, config: any, eventName: string) => {
@@ -214,7 +214,7 @@ export class Worker {
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.CANCELLED, subject, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}: `, { error })
       );
     },
     handleFulfillmentCancelled: (msg: Fulfillment, context: any, config: any, eventName: string) => {
@@ -224,13 +224,13 @@ export class Worker {
       const subject = {} as Subject; // System Admin?
       return this.orderingService?.updateState(ids, OrderState.CANCELLED, subject, context).then(
         () => this.logger.info(`Event ${eventName} handled.`),
-        err => this.logger.error(`Error while handling event ${eventName}: ${err}`)
+        error => this.logger.error(`Error while handling event ${eventName}: `, { error })
       );
     },
     handleQueuedJob: (msg: any, context: any, config: any, eventName: string) => {
       return this.serviceActions.get(msg?.type)(msg?.data?.payload, context, config, msg?.type).then(
         () => this.logger.info(`Job ${msg?.type} done.`),
-        (err: any) => this.logger.error(`Job ${msg?.type} failed: ${err}`)
+        error => this.logger.error(`Job ${msg?.type} failed: `, { error })
       );
     },
     handleCommand: (msg: any, context: any, config: any, eventName: string) => {
@@ -329,7 +329,7 @@ export class Worker {
         {
           logger,
           cfg,
-          dependencies: [],
+          dependencies: ['acs-srv'],
           readiness: () => (db as Arango).db.version().then(v => !!v)
         }
       )
@@ -339,6 +339,7 @@ export class Worker {
     const reflectionServiceName = serviceNamesCfg.reflection;
     const reflectionService = buildReflectionService([
       { descriptor: OrderMeta.fileDescriptor },
+      { descriptor: CommandInterfaceMeta.fileDescriptor },
     ]);
 
     await this.server.bind(reflectionServiceName, {
@@ -356,15 +357,15 @@ export class Worker {
     this.logger.info('Shutting down');
     await Promise.allSettled([
       this.events?.stop().catch(
-        err => this.logger.error(err)
+        error => this.logger.error(error)
       )
     ]);
     await Promise.allSettled([
       this.server?.stop().catch(
-        err => this.logger.error(err)
+        error => this.logger.error(error)
       ),
       this.offsetStore?.stop().catch(
-        err => this.logger.error(err)
+        error => this.logger.error(error)
       ),
     ]);
   }
@@ -372,15 +373,14 @@ export class Worker {
 
 if (require.main === module) {
   const worker = new Worker();
-  const logger = worker.logger;
-  worker.start().catch((err) => {
-    logger.error('startup error', err);
+  worker.start().catch((error) => {
+    worker.logger?.error('startup error', { error });
     process.exit(1);
   });
 
   process.on('SIGINT', () => {
-    worker.stop().catch((err) => {
-      logger.error('shutdown error', err);
+    worker.stop().catch((error) => {
+      worker.logger?.error('shutdown error', { error });
       process.exit(1);
     });
   });

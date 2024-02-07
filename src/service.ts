@@ -84,7 +84,7 @@ import {
   PackingSolutionResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment_product';
 import { FilterOp_Operator, Filter_Operation } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/filter';
-import { Filter_ValueType, ReadRequest } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base';
+import { DeleteRequest, Filter_ValueType, ReadRequest } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base';
 import {
   OperationStatus,
   Status,
@@ -125,8 +125,6 @@ export type OperationStatusMap = { [key: string]: OperationStatus };
 export type VATMap = { [key: string]: VAT };
 export type ProductNature = PhysicalProduct & VirtualProduct;
 export type ProductVariant = PhysicalVariant & VirtualVariant;
-
-
 export type CRUDClient = Client<ProductServiceDefinition>
 | Client<TaxServiceDefinition>
 | Client<CustomerServiceDefinition>
@@ -179,10 +177,20 @@ export class OrderingService
       code: 404,
       message: '{entity} {id} has no legal address!',
     },
+    NO_SHIPPING_ADDRESS: {
+      id: '',
+      code: 404,
+      message: '{entity} {id} has no shipping address!',
+    },
     NOT_SUBMITTED: {
       id: '',
       code: 400,
       message: '{entity} {id} expected to be submitted!',
+    },
+    NO_ITEM: {
+      id: '',
+      code: 400,
+      message: '{entity} {id} has no item in cart',
     },
     NO_PHYSICAL_ITEM: {
       id: '',
@@ -202,12 +210,20 @@ export class OrderingService
       message: 'SUCCESS',
     },
     PARTIAL: {
-      code: 400,
-      message: 'Patrial executed with errors!',
+      code: 208,
+      message: 'Patrial execution including errors!',
     },
     LIMIT_EXHAUSTED: {
       code: 500,
       message: 'Query limit 1000 exhausted!',
+    },
+    CONFLICT: {
+      code: 409,
+      message: 'Resource conflict, ID already in use!'
+    },
+    NO_ITEM: {
+      code: 400,
+      message: 'No item in cart',
     },
   };
 
@@ -362,7 +378,7 @@ export class OrderingService
     if (fulfillment_cfg && !fulfillment_cfg.disabled) {
       this.creates_fulfillments_on_submit = fulfillment_cfg.createOnSubmit;
       this.cleanup_fulfillments_post_submit = fulfillment_cfg.cleanupPostSubmit;
-      this.fulfillment_tech_user = fulfillment_cfg.users?.fulfillment_tech_user;
+      this.fulfillment_tech_user = fulfillment_cfg.users?.tech_user;
       this.fulfillment_service = createClient(
         {
           ...fulfillment_cfg,
@@ -373,7 +389,7 @@ export class OrderingService
       );
     }
     else {
-      this.logger.warn('Ordering-srv: fulfillment config is missing!');
+      this.logger.warn('fulfillment config is missing!');
     }
 
     const fulfillment_product_cfg = cfg.get('client:fulfillment_product');
@@ -388,14 +404,14 @@ export class OrderingService
       );
     }
     else {
-      this.logger.warn('Ordering-srv: fulfillment_product config is missing!');
+      this.logger.warn('fulfillment_product config is missing!');
     }
 
     const invoicing_cfg = cfg.get('client:invoice');
     if (invoicing_cfg && !invoicing_cfg.disabled) {
       this.creates_invoices_on_submit = invoicing_cfg.createOnSubmit;
       this.cleanup_invoices_post_submit = invoicing_cfg.cleanupPostSubmit;
-      this.invoice_tech_user = invoicing_cfg.users?.invoice_tech_user;
+      this.invoice_tech_user = invoicing_cfg.users?.tech_user;
       this.invoice_service = createClient(
         {
           ...invoicing_cfg,
@@ -406,7 +422,7 @@ export class OrderingService
       );
     }
     else {
-      this.logger.warn('Ordering-srv: invoie config is missing!');
+      this.logger.warn('invoice config is missing!');
     }
   }
 
@@ -414,7 +430,7 @@ export class OrderingService
     id: string,
     entity: string,
     status: Status,
-    entity_id?: string,
+    entity_id: string,
     error?: string,
   ): Status {
     return {
@@ -425,7 +441,7 @@ export class OrderingService
       ).replace(
         '{entity}', entity
       ).replace(
-        '{id}', entity_id ?? id
+        '{id}', entity_id
       ) ?? 'Unknown status',
     };
   }
@@ -448,7 +464,7 @@ export class OrderingService
       total_count: 0,
       operation_status: {
         code: e?.code ?? 500,
-        message: e?.message ?? e?.details ?? e?.toString(),
+        message: e?.message ?? e?.details ?? (e ? JSON.stringify(e) : 'Unknown Error!'),
       }
     };
     this.logger.error(error);
@@ -522,7 +538,7 @@ export class OrderingService
         (item) => item.product_id
       )
     ).filter(
-      id => !products[id]
+      id => !!products[id]
     )).values()];
 
     if (product_ids.length) {
@@ -595,9 +611,9 @@ export class OrderingService
     context?: any,
   ): Promise<ProductMap> {
     const product_ids = [...new Set<string>(orders.flatMap(
-      (o) => o.items.map(
+      (o) => o.items?.map(
         (item) => item.product_id
-      )
+      ) ?? []
     ).filter(
       (id) => !!id
     )).values()];
@@ -612,35 +628,29 @@ export class OrderingService
     const product_id_json = JSON.stringify(product_ids);
     const products = await this.product_service.read(
       {
-        filters: [{
-          filters: [
-            {
-              field: 'product.id',
+        filters: [
+          {
+            filters: [{
+              field: 'id',
               operation: Filter_Operation.in,
               value: product_id_json,
               type: Filter_ValueType.ARRAY,
-            }, {
-              field: 'bundle.id',
-              operation: Filter_Operation.in,
-              value: product_id_json,
-              type: Filter_ValueType.ARRAY,
-            }
-          ],
-          operator: FilterOp_Operator.or
-        }],
+            }],
+          },
+        ],
         limit: product_ids.length,
         subject,
       },
-      context
+      context,
     ).then(
       (response) => {
         if (response.operation_status?.code === 200) {
-          return response.items.reduce(
+          return response.items?.reduce(
             (a, b) => {
               a[b.payload?.id] = b;
               return a;
             }, {} as ProductMap
-          );
+          ) ?? {} as ProductMap;
         }
         else {
           throw response.operation_status;
@@ -802,10 +812,10 @@ export class OrderingService
       },
       context,
     ).then(
-      response => {
+      (response: any) => {
         if (response.operation_status?.code === 200) {
           return response.items?.reduce(
-            (a, b) => {
+            (a: any, b: any) => {
               a[b.payload?.id] = b;
               return a;
             }, {} as T
@@ -818,34 +828,34 @@ export class OrderingService
     );
   }
 
-  async getById<T>(
-    request_id: string,
+  private async getById<T>(
+    id: string,
     map: { [id: string]: T },
-    id: string
+    request_id: string,
   ): Promise<T> {
-    if (id in map) {
+    if (map && id in map) {
       return map[id];
     }
     else {
       throw this.createStatusCode(
         request_id,
-        typeof({} as T),
+        ({} as new() => T)?.name,
         this.status_codes.NOT_FOUND,
         id,
       );
     }
   }
 
-  async getByIds<T>(
-    request_id: string,
+  private async getByIds<T>(
+    ids: string[],
     map: { [id: string]: T },
-    ids: string[]
+    request_id: string,
   ): Promise<T[]> {
     return Promise.all(ids.map(
       id => this.getById(
-        request_id,
+        id,
         map,
-        id
+        request_id,
       )
     ));
   }
@@ -866,20 +876,20 @@ export class OrderingService
       context
     );
     const customer_map = await this.get<CustomerMap>(
-      order_list.items.map(item => item.customer_id),
+      order_list.items?.map(item => item.customer_id),
       this.customer_service,
       subject,
       context,
     );
     const shop_map = await this.get<ShopMap>(
-      order_list.items.map(item => item.shop_id),
+      order_list.items?.map(item => item.shop_id),
       this.shop_service,
       subject,
       context,
     );
     const organization_map = await this.get<OrganizationMap>(
       Object.values(
-        shop_map
+        shop_map ?? []
       ).map(
         item => item.payload?.organization_id
       ),
@@ -889,7 +899,7 @@ export class OrderingService
     );
     const contact_point_map = await this.get<ContactPointMap>(
       Object.values(
-        organization_map
+        organization_map ?? []
       ).flatMap(
         item => item.payload?.contact_point_ids
       ),
@@ -899,7 +909,7 @@ export class OrderingService
     );
     const address_map = await this.get<AddressMap>(
       Object.values(
-        contact_point_map
+        contact_point_map ?? []
       ).map(
         item => item.payload?.physical_address_id
       ),
@@ -910,12 +920,12 @@ export class OrderingService
     const country_map = await this.get<CountryMap>(
       [
         ...Object.values(
-          tax_map
+          tax_map ?? []
         ).map(
           t => t.country_id
         ),
         ...Object.values(
-          address_map
+          address_map ?? []
         ).map(
           item => item.payload?.country_id
         )
@@ -930,7 +940,7 @@ export class OrderingService
       price_ratio = 1.0
     ): RatioedTax[] => {
       return [].concat(
-        main?.product?.tax_ids.map(id => ({
+        main?.product?.tax_ids?.map(id => ({
           ...tax_map[id],
           tax_ratio: price_ratio
         })),
@@ -959,23 +969,27 @@ export class OrderingService
       }
     };
 
-    const promises = order_list.items.map(async (order) => {
+    const promises = order_list.items?.map(async (order) => {
       try {
-        const country = await this.getById(
+        const customer = await this.getById(
+          order.customer_id,
+          customer_map,
           order.id,
+        );
+        const shop = await this.getById(
+          order.shop_id,
           shop_map,
-          order.shop_id
-        ).then(
-          shop => this.getById(
-            order.id,
-            organization_map,
-            shop.payload.organization_id,
-          )
+          order.id,
+        );
+        const country = await this.getById(
+          shop.payload.organization_id,
+          organization_map,
+          order.id,
         ).then(
           orga => this.getByIds(
-            order.id,
-            contact_point_map,
             orga.payload.contact_point_ids,
+            contact_point_map,
+            order.id,
           )
         ).then(
           cps => cps.find(
@@ -995,54 +1009,86 @@ export class OrderingService
             }
             else {
               return this.getById(
-                order.id,
-                address_map,
                 cp.payload.physical_address_id,
+                address_map,
+                order.id,
               );
             }
           }
         ).then(
           address => this.getById(
-            order.id,
+            address.payload.country_id,
             country_map,
-            address.payload.country_id
+            order.id,
           )
         ).then(
           country => country.payload
         );
 
-        order.items.forEach(
-          (item) => {
-            const product = product_map[item.product_id]?.payload;
-            const nature = (product.product?.physical ?? product.product?.virtual) as ProductNature;
-            const variant = mergeProductVariantRecursive(nature, item.variant_id);
-            const taxes = getTaxesRecursive(product).filter(t => !!t);
-            const unit_price = product.bundle ? product.bundle?.price : variant?.price;
-            const gross = (unit_price.sale ? unit_price.sale_price : unit_price.regular_price) * item.quantity;
-            const vats = taxes.filter(
-              t => (
-                t.country_id === country.id &&
-                !!customer_map[order.customer_id]?.payload.private?.user_id &&
-                country.country_code in COUNTRY_CODES_EU &&
-                country_map[order.shipping_address.address.country_id]?.payload.country_code in COUNTRY_CODES_EU
-              )
-            ).map(
-              t => ({
-                tax_id: t.id,
-                vat: gross * t.rate * t.tax_ratio
-              }) as VAT
-            );
-            const net = vats.reduce((a, b) => b.vat + a, gross);
-            item.unit_price = unit_price;
-            item.amount = {
-              gross,
-              net,
-              vats,
-            };
-          }
-        );
+        if (customer.payload?.private?.user_id) {
+          order.user_id = customer.payload.private.user_id;
+        }
 
-        order.total_amounts = Object.values(order.items.reduce(
+        if (order.items?.length > 0) {
+          await Promise.all(order.items?.map(
+            async (item) => {
+              if (!order.shipping_address) {
+                throw this.createStatusCode(
+                  order.id,
+                  'Order',
+                  this.status_codes.NO_SHIPPING_ADDRESS,
+                  order?.id,
+                );
+              }
+
+              const product = await this.getById(
+                item.product_id,
+                product_map,
+                order.id,
+              );
+              const shipping_address = await this.getById(
+                order.shipping_address.address.country_id,
+                country_map,
+                order.id,
+              );
+              const nature = (product.payload?.product?.physical ?? product.payload?.product?.virtual) as ProductNature;
+              const variant = mergeProductVariantRecursive(nature, item.variant_id);
+              const taxes = getTaxesRecursive(product.payload).filter(t => !!t);
+              const unit_price = product.payload?.bundle ? product.payload?.bundle?.price : variant?.price;
+              const gross = (unit_price.sale ? unit_price.sale_price : unit_price.regular_price) * item.quantity;
+              const vats = taxes.filter(
+                t => (
+                  t.country_id === country.id &&
+                  !!customer?.payload?.private?.user_id &&
+                  country.country_code in COUNTRY_CODES_EU &&
+                  shipping_address?.payload.country_code in COUNTRY_CODES_EU
+                )
+              ).map(
+                t => ({
+                  tax_id: t.id,
+                  vat: gross * t.rate * t.tax_ratio
+                }) as VAT
+              );
+              const net = vats.reduce((a, b) => b.vat + a, gross);
+              item.unit_price = unit_price;
+              item.amount = {
+                gross,
+                net,
+                vats,
+              };
+            }
+          ));
+        }
+        else {
+          throw this.createStatusCode(
+            order?.id,
+            'Order',
+            this.status_codes.NO_ITEM,
+            order?.id,
+          );
+        }
+
+        order.total_amounts = Object.values(order.items?.reduce(
           (amounts, item) => {
             const amount = amounts[item.amount.currency_id];
             if (amount) {
@@ -1081,8 +1127,9 @@ export class OrderingService
           payload: order,
           status: this.createStatusCode(
             order?.id,
-            typeof(order),
+            'Order',
             this.status_codes.OK,
+            order?.id,
           ),
         } as OrderResponse;
       }
@@ -1095,24 +1142,27 @@ export class OrderingService
           status: {
             id: order?.id,
             code: e?.code ?? 500,
-            message: e?.message ?? e?.details ?? e?.toString() ?? e
+            message: e?.message ?? e?.details ?? (e ? JSON.stringify(e) : 'Unknown Error!')
           }
         } as OrderResponse;
       }
     }) as OrderResponse[];
 
     const items = await Promise.all(promises);
-    const status = items.reduce(
-      (a, b) => a.status?.code > b.status?.code ? a : b
-    )?.status;
+    const operation_status = items.some(
+      a => a.status?.code !== 200
+    ) ? this.createOperationStatusCode(
+        'order',
+        this.operation_status_codes.PARTIAL
+      ) : this.createOperationStatusCode(
+        'order',
+        this.operation_status_codes.SUCCESS
+      );
 
     return {
       items,
-      total_count: items.length,
-      operation_status: {
-        code: status.code,
-        message: status.message,
-      },
+      total_count: items.length ?? 0,
+      operation_status,
     } as OrderListResponse;
   }
 
@@ -1292,7 +1342,9 @@ export class OrderingService
     context?: any
   ): Promise<OrderSubmitListResponse> {
     try {
-      const unauthenticated = !request.subject?.id?.length || request.subject?.id === this.unauthenticated_user?.id;
+      const unauthenticated = request.subject.unauthenticated
+        || !request.subject?.id?.length
+        || request.subject?.id === this.unauthenticated_user?.id;
 
       if(unauthenticated) {
         await super.read(
@@ -1315,13 +1367,16 @@ export class OrderingService
         ).then(
           response => {
             if (response.items?.length) {
-              throw '';
+              throw this.createOperationStatusCode(
+                'order',
+                this.operation_status_codes.CONFLICT
+              );
             }
           }
         );
       }
 
-      const responseMap = request.items.reduce(
+      const responseMap = request.items?.reduce(
         (a, b) => {
           a[b.id] = {};
           return a;
@@ -1329,31 +1384,35 @@ export class OrderingService
         {} as { [key: string]: OrderResponse }
       );
 
-      const items = await this.evaluate(
+      const { items, operation_status } = await this.aggregateOrders(
         request,
+        request.subject,
         context,
       ).then(
-        response => {
-          if (response.operation_status.code === 200) {
-            return response.items.filter(
-              (item: OrderResponse) => {
-                if (item.status?.id in responseMap) {
-                  responseMap[item.status.id] = item;
-                }
-                return item.status?.code === 200;
+        response => ({
+          items: response.items?.filter(
+            (item: OrderResponse) => {
+              if (item.status?.id in responseMap) {
+                responseMap[item.status.id] = item;
               }
-            ).map(
-              item => {
-                item.payload.order_state = OrderState.SUBMITTED;
-                return item.payload as Order;
-              }
-            );
-          }
-          else {
-            throw response.operation_status;
-          }
-        }
+              return item.status?.code === 200;
+            }
+          ).map(
+            item => {
+              item.payload.order_state = OrderState.SUBMITTED;
+              return item.payload as Order;
+            }
+          ),
+          operation_status: response.operation_status
+        })
       );
+
+      if (!items.length) {
+        return {
+          orders: Object.values(responseMap),
+          operation_status,
+        };
+      }
 
       const orders = await super.upsert(
         {
@@ -1393,7 +1452,7 @@ export class OrderingService
           context,
         ).then(
           response => {
-            if (response.operation_status?.code === 200) {
+            if (response.operation_status?.code < 300) {
               return response.items;
             }
             else {
@@ -1419,7 +1478,6 @@ export class OrderingService
                 }
               }
             );
-
           }
         );
       }
@@ -1447,7 +1505,7 @@ export class OrderingService
           context,
         ).then(
           response => {
-            if (response.operation_status?.code === 200) {
+            if (response.operation_status?.code < 300) {
               return response.items;
             }
             else {
@@ -1563,11 +1621,11 @@ export class OrderingService
     database: 'arangoDB',
     useCache: true,
   })
-  public async withdraw(
+  public withdraw(
     request: OrderIdList,
     context?: any
   ): Promise<OrderListResponse> {
-    return await this.updateState(
+    return this.updateState(
       request.ids,
       OrderState.WITHDRAWN,
       request.subject,
@@ -1583,16 +1641,31 @@ export class OrderingService
     database: 'arangoDB',
     useCache: true,
   })
-  public async cancel(
+  public cancel(
     request: OrderIdList,
     context?: any
   ): Promise<OrderListResponse> {
-    return await this.updateState(
+    return this.updateState(
       request.ids,
       OrderState.CANCELLED,
       request.subject,
       context,
     );
+  }
+
+  @access_controlled_function({
+    action: AuthZAction.DELETE,
+    operation: Operation.isAllowed,
+    context: OrderingService.ACSContextFactory,
+    resource: DefaultResourceFactory('order'),
+    database: 'arangoDB',
+    useCache: true,
+  })
+  public override delete(
+    request: DeleteRequest,
+    context: any,
+  ) {
+    return super.delete(request, context);
   }
 
   private async getPackingSolution(
@@ -1638,6 +1711,7 @@ export class OrderingService
             item.order_id,
             this.entityName,
             this.status_codes.NOT_FOUND,
+            item.order_id,
           );
           return false;
         }
@@ -1667,6 +1741,7 @@ export class OrderingService
             item.order_id,
             this.entityName,
             this.status_codes.NO_PHYSICAL_ITEM,
+            item.order_id,
           );
         }
 
@@ -1859,10 +1934,12 @@ export class OrderingService
           ...invalids
         ],
         total_count: response.items.length + invalids.length,
-        operation_status: invalids.length ? {
-          code: 400,
-          message: 'Partial executed with errors!',
-        } : response.operation_status,
+        operation_status: invalids.length
+          ? this.createOperationStatusCode(
+            'fulfillment',
+            this.operation_status_codes.PARTIAL
+          )
+          : response.operation_status,
       };
     }
     catch (e) {
@@ -1918,9 +1995,9 @@ export class OrderingService
         } as FulfillmentList
       );
 
-      this.logger.debug('Emit Fulfillment request', fulfillmentList);
+      this.logger.debug('Emit Fulfillment request', { fulfillmentList });
       await this.topic.emit(this.emitters['CREATE_FULFILLMENT'] ?? CREATE_FULFILLMENT, fulfillmentList);
-      this.logger.info('Fulfillment request emitted successfully', fulfillmentList);
+      this.logger.info('Fulfillment request emitted successfully', { fulfillmentList });
 
       return {
         items: Object.values(responseMap),
@@ -1970,6 +2047,7 @@ export class OrderingService
               item.sections[0]?.order_id,
               this.entityName,
               this.status_codes.NOT_FOUND,
+              item.sections[0]?.order_id,
             )
           };
         }
@@ -1984,6 +2062,7 @@ export class OrderingService
                 section.order_id,
                 this.entityName,
                 this.status_codes.NOT_FOUND,
+                section.order_id,
               )
             };
           }
@@ -1996,7 +2075,8 @@ export class OrderingService
               status: this.createStatusCode(
                 section.order_id,
                 typeof(order.payload),
-                this.status_codes.IN_HOMOGEN_INVOICE
+                this.status_codes.IN_HOMOGEN_INVOICE,
+                section.order_id,
               ),
             };
           }
@@ -2119,6 +2199,7 @@ export class OrderingService
             master.payload.id,
             'Invoice',
             this.status_codes.OK,
+            master.payload.id,
           ),
         };
       }
