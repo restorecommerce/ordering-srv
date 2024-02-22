@@ -8,13 +8,13 @@ import {
   FulfillmentRequest,
   Order,
   OrderServiceDefinition,
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order.js';
 import {
   Order as Order_,
   OrderState as Order_State,
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order.js';
 import { GrpcMockServer } from '@alenon/grpc-mock-server';
-import { Worker } from '../src/worker';
+import { Worker } from '../src/worker.js';
 import {
   cfg,
   logger,
@@ -23,7 +23,7 @@ import {
   connectEvents,
   connectTopics,
   mockServices,
-} from './utils';
+} from './utils.js';
 
 describe('The Ordering Service:', () => {
   let mocking: GrpcMockServer[];

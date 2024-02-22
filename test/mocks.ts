@@ -2,81 +2,81 @@ import {
   Response,
   Response_Decision,
   ReverseQuery,
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/access_control';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/access_control.js';
 import {
   OrderList,
   OrderState,
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order.js';
 import { 
   ProductListResponse,
   ProductResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/product';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/product.js';
 import {
   OrganizationListResponse,
   OrganizationResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/organization';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/organization.js';
 import {
   ContactPointListResponse,
   ContactPointResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/contact_point';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/contact_point.js';
 import {
   AddressListResponse,
   BillingAddress,
   ShippingAddress
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/address';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/address.js';
 import {
   CountryListResponse,
   CountryResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/country';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/country.js';
 import {
   TaxListResponse,
   TaxResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/tax';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/tax.js';
 import {
   TaxTypeListResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/tax_type';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/tax_type.js';
 import {
   PackingSolutionListResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment_product';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment_product.js';
 import {
   UserListResponse,
   UserResponse,
   UserType
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/user';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/user.js';
 import {
   ShopListResponse,
   ShopResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/shop';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/shop.js';
 import {
   CustomerListResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/customer';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/customer.js';
 import {
   FulfillmentListResponse,
   FulfillmentResponse,
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment.js';
 import {
   OperationStatus
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/status';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/status.js';
 import {
   InvoiceListResponse,
   PaymentState
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/invoice';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/invoice.js';
 import {
   DeepPartial
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/resource_base';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/resource_base.js';
 import {
   Effect
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/rule';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/rule.js';
 import {
   Subject
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/auth';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/auth.js';
 import {
   HierarchicalScope
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth.js';
 import {
   getRedisInstance,
   logger
-} from './utils';
+} from './utils.js';
 
 type Address = ShippingAddress & BillingAddress;
 

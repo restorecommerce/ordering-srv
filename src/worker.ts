@@ -17,23 +17,23 @@ import {
   OrderServiceDefinition,
   OrderState,
   protoMetadata as OrderMeta,
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order.js';
 import {
   CommandInterfaceServiceDefinition,
   protoMetadata as CommandInterfaceMeta,
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/commandinterface';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/commandinterface.js';
 import { ServiceConfig, createServiceConfig } from '@restorecommerce/service-config';
 import { createLogger } from '@restorecommerce/logger';
-import { OrderingService } from './service';
+import { OrderingService } from './service.js';
 import { RedisClientType as RedisClient, createClient } from 'redis';
-import { Arango } from '@restorecommerce/chassis-srv/lib/database/provider/arango/base';
+import { Arango } from '@restorecommerce/chassis-srv/lib/database/provider/arango/base.js';
 import { Logger } from 'winston';
-import { BindConfig } from '@restorecommerce/chassis-srv/lib/microservice/transport/provider/grpc';
-import { HealthDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated-server/grpc/health/v1/health';
+import { BindConfig } from '@restorecommerce/chassis-srv/lib/microservice/transport/provider/grpc.js';
+import { HealthDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated-server/grpc/health/v1/health.js';
 import { ServerReflectionService } from 'nice-grpc-server-reflection';
-import { Fulfillment } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment';
-import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth';
-import { OrderingCommandInterface } from './command_interface';
+import { Fulfillment } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment.js';
+import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth.js';
+import { OrderingCommandInterface } from './command_interface.js';
 import { initAuthZ } from '@restorecommerce/acs-client';
 
 registerProtoMeta(
@@ -369,20 +369,5 @@ export class Worker {
       ),
     ]);
   }
-}
-
-if (require.main === module) {
-  const worker = new Worker();
-  worker.start().catch((error) => {
-    worker.logger?.error('startup error', { error });
-    process.exit(1);
-  });
-
-  process.on('SIGINT', () => {
-    worker.stop().catch((error) => {
-      worker.logger?.error('shutdown error', { error });
-      process.exit(1);
-    });
-  });
 }
 

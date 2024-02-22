@@ -36,7 +36,7 @@ import {
   OrderingInvoiceRequestList,
   FulfillmentInvoiceMode,
   OrderSubmitListResponse,
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order.js';
 import {
   PhysicalProduct,
   PhysicalVariant,
@@ -45,28 +45,28 @@ import {
   ProductServiceDefinition,
   VirtualProduct,
   VirtualVariant
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/product';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/product.js';
 import {
   TaxServiceDefinition, Tax
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/tax';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/tax.js';
 import {
   CustomerServiceDefinition, CustomerResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/customer';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/customer.js';
 import {
   ShopServiceDefinition, ShopResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/shop';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/shop.js';
 import {
   OrganizationResponse, OrganizationServiceDefinition
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/organization';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/organization.js';
 import {
   ContactPointServiceDefinition, ContactPointResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/contact_point';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/contact_point.js';
 import {
   AddressServiceDefinition, AddressResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/address';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/address.js';
 import {
   CountryServiceDefinition, CountryResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/country';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/country.js';
 import {
   FulfillmentServiceDefinition,
   Item as FulfillmentItem,
@@ -75,34 +75,34 @@ import {
   FulfillmentList,
   Packaging,
   Parcel,
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment.js';
 import {
   FulfillmentProductServiceDefinition,
   PackingSolutionQuery,
   PackingSolutionQueryList,
   PackingSolutionListResponse,
   PackingSolutionResponse,
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment_product';
-import { FilterOp_Operator, Filter_Operation } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/filter';
-import { DeleteRequest, Filter_ValueType, ReadRequest } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment_product.js';
+import { FilterOp_Operator, Filter_Operation } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/filter.js';
+import { DeleteRequest, Filter_ValueType, ReadRequest } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import {
   OperationStatus,
   Status,
   StatusListResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/status';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/status.js';
 import {
   InvoiceListResponse,
   InvoiceResponse,
   Section,
   Position,
   InvoiceServiceDefinition
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/invoice';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/invoice.js';
 import {
   Amount,
   VAT
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/amount';
-import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth';
-import { COUNTRY_CODES_EU } from './utils';
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/amount.js';
+import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth.js';
+import { COUNTRY_CODES_EU } from './utils.js';
 
 export type RatioedTax = Tax & {
   tax_ratio?: number;
@@ -1247,7 +1247,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.CREATE,
     operation: Operation.isAllowed,
-    context: OrderingService.ACSContextFactory,
+    context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('order'),
     database: 'arangoDB',
     useCache: true,
@@ -1269,7 +1269,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
-    context: OrderingService.ACSContextFactory,
+    context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('order'),
     database: 'arangoDB',
     useCache: true,
@@ -1285,7 +1285,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
-    context: OrderingService.ACSContextFactory,
+    context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('order'),
     database: 'arangoDB',
     useCache: true,
@@ -1332,7 +1332,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
-    context: OrderingService.ACSContextFactory,
+    context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('execution.submitOrders'),
     database: 'arangoDB',
     useCache: true,
@@ -1616,7 +1616,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
-    context: OrderingService.ACSContextFactory,
+    context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('execution.withdrawOrder'),
     database: 'arangoDB',
     useCache: true,
@@ -1636,7 +1636,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
-    context: OrderingService.ACSContextFactory,
+    context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('execution.cancelOrders'),
     database: 'arangoDB',
     useCache: true,
@@ -1656,7 +1656,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.DELETE,
     operation: Operation.isAllowed,
-    context: OrderingService.ACSContextFactory,
+    context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('order'),
     database: 'arangoDB',
     useCache: true,
@@ -1888,7 +1888,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
-    context: OrderingService.ACSContextFactory,
+    context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('execution.createFulfillment'),
     database: 'arangoDB',
     useCache: true,
@@ -1950,7 +1950,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
-    context: OrderingService.ACSContextFactory,
+    context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('execution.triggerFulfillment'),
     database: 'arangoDB',
     useCache: true,
@@ -2209,7 +2209,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.CREATE,
     operation: Operation.isAllowed,
-    context: OrderingService.ACSContextFactory,
+    context: OrderingService?.ACSContextFactory,
     resource: [{ resource: 'invoice' }],
     database: 'arangoDB',
     useCache: true,
@@ -2263,7 +2263,7 @@ export class OrderingService
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
-    context: OrderingService.ACSContextFactory,
+    context: OrderingService?.ACSContextFactory,
     resource: [{ resource: 'invoice' }],
     database: 'arangoDB',
     useCache: true,
