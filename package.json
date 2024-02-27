@@ -60,14 +60,14 @@
     "@grpc/grpc-js": "^1.9.11"
   },
   "scripts": {
-    "start": "node lib/start.js",
+    "start": "node lib/start.cjs",
     "dev": "cross-env NODE_ENV=development nodemon --watch './src/**/*.ts' --exec node --loader ts-node/esm ./src/start.ts",
     "test": "npm run lint && c8 --reporter=text npm run mocha",
     "lcov-report": "c8 report --reporter=lcov",
     "lint": "eslint src --ext .ts",
     "mocha": "cross-env NODE_ENV=test mocha --full-trace --exit --trace-warnings --exit",
     "test-debug": "cross-env NODE_ENV=test mocha --full-trace --exit --trace-warnings --exit --inspect-brk",
-    "build:tsc": "esbuild ./src/start.ts --bundle --platform=node --outfile=lib/start.js --minify --tree-shaking=true --sourcemap=inline",
+    "build:tsc": "esbuild ./src/start.ts --bundle --platform=node --outfile=lib/start.cjs --minify --tree-shaking=true --sourcemap=inline",
     "build:clean": "rimraf lib",
     "build": "npm-run-all lint build:clean build:tsc"
   },
