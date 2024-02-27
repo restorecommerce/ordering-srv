@@ -107,6 +107,7 @@ describe('The Ordering Service:', () => {
     it(`should evaluate valid orders by sample: ${sample_name}`, async function() {
       this.timeout(5000);
       const response = await client.evaluate(sample);
+      console.log(JSON.stringify(response, undefined, 2));
       should.equal(
         response.operationStatus?.code,
         200,

@@ -1,5 +1,8 @@
+import nconf from 'nconf';
 import { Logger } from 'winston';
-import { Provider as ServiceConfig } from 'nconf';
+import {
+  database
+} from '@restorecommerce/chassis-srv';
 import {
   Client,
   createClient,
@@ -21,7 +24,6 @@ import {
   ResourcesAPIBase,
   ServiceBase,
 } from '@restorecommerce/resource-base-interface';
-import { DatabaseProvider } from '@restorecommerce/chassis-srv';
 import { Topic } from '@restorecommerce/kafka-client';
 import {
   OrderList,
@@ -83,8 +85,15 @@ import {
   PackingSolutionListResponse,
   PackingSolutionResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment_product.js';
-import { FilterOp_Operator, Filter_Operation } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/filter.js';
-import { DeleteRequest, Filter_ValueType, ReadRequest } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
+import {
+  FilterOp_Operator,
+  Filter_Operation
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/filter.js';
+import {
+  DeleteRequest,
+  Filter_ValueType,
+  ReadRequest
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import {
   OperationStatus,
   Status,
@@ -149,8 +158,8 @@ export class OrderingService
     request: OrderList & OrderIdList & FulfillmentRequestList & OrderingInvoiceRequestList,
     context: any,
   ): Promise<ACSClientContext> {
-    const ids = request.ids ?? request.items?.map(item => item.id);
-    const resources = await self.getOrdersById(ids, request.subject, context);
+    const ids = request.ids ?? request.items?.map(item => item.id!) ?? [] as string[];
+    const resources = await self.getOrdersById(ids, request?.subject!, context);
     return {
       ...context,
       subject: request.subject,
@@ -230,8 +239,8 @@ export class OrderingService
   protected readonly emitters: any;
   protected readonly legal_address_type_id: string;
   protected readonly unauthenticated_user: Subject;
-  protected readonly fulfillment_tech_user: Subject;
-  protected readonly invoice_tech_user: Subject;
+  protected readonly fulfillment_tech_user?: Subject;
+  protected readonly invoice_tech_user?: Subject;
   protected readonly product_service: Client<ProductServiceDefinition>;
   protected readonly tax_service: Client<TaxServiceDefinition>;
   protected readonly customer_service: Client<CustomerServiceDefinition>;
@@ -240,13 +249,13 @@ export class OrderingService
   protected readonly contact_point_service: Client<ContactPointServiceDefinition>;
   protected readonly address_service: Client<AddressServiceDefinition>;
   protected readonly country_service: Client<CountryServiceDefinition>;
-  protected readonly fulfillment_service: Client<FulfillmentServiceDefinition>;
-  protected readonly fulfillment_product_service: Client<FulfillmentProductServiceDefinition>;
-  protected readonly invoice_service: Client<InvoiceServiceDefinition>;
-  protected readonly creates_fulfillments_on_submit: boolean;
-  protected readonly creates_invoices_on_submit: boolean;
-  protected readonly cleanup_fulfillments_post_submit: boolean;
-  protected readonly cleanup_invoices_post_submit: boolean;
+  protected readonly fulfillment_service?: Client<FulfillmentServiceDefinition>;
+  protected readonly fulfillment_product_service?: Client<FulfillmentProductServiceDefinition>;
+  protected readonly invoice_service?: Client<InvoiceServiceDefinition>;
+  protected readonly creates_fulfillments_on_submit?: boolean;
+  protected readonly creates_invoices_on_submit?: boolean;
+  protected readonly cleanup_fulfillments_post_submit?: boolean;
+  protected readonly cleanup_invoices_post_submit?: boolean;
   protected readonly urn_instance_type: string;
   protected readonly urn_disable_fulfillment: string;
   protected readonly urn_disable_invoice: string;
@@ -265,8 +274,8 @@ export class OrderingService
 
   constructor(
     protected readonly topic: Topic,
-    protected readonly db: DatabaseProvider,
-    protected readonly cfg: ServiceConfig,
+    protected readonly db: database.DatabaseProvider,
+    protected readonly cfg: nconf.Provider,
     logger: Logger,
   ) {
     super(
@@ -277,8 +286,8 @@ export class OrderingService
         db,
         cfg.get('database:main:collections:0') ?? 'orders',
         cfg.get('fieldHandlers'),
-        null,
-        null,
+        undefined,
+        undefined,
         logger,
       ),
       !!cfg.get('events:enableEvents')
@@ -427,21 +436,21 @@ export class OrderingService
   }
 
   private createStatusCode(
-    id: string,
-    entity: string,
-    status: Status,
-    entity_id: string,
+    id?: string,
+    entity?: string,
+    status?: Status,
+    entity_id?: string,
     error?: string,
   ): Status {
     return {
       id,
       code: status?.code ?? 500,
       message: status?.message?.replace(
-        '{error}', error
+        '{error}', error ?? 'undefined'
       ).replace(
-        '{entity}', entity
+        '{entity}', entity ?? 'undefined'
       ).replace(
-        '{id}', entity_id
+        '{id}', entity_id ?? 'undefined'
       ) ?? 'Unknown status',
     };
   }
@@ -460,7 +469,7 @@ export class OrderingService
 
   private catchOperationError(e: any) {
     const error = {
-      items: [],
+      items: [] as any[],
       total_count: 0,
       operation_status: {
         code: e?.code ?? 500,
@@ -472,10 +481,10 @@ export class OrderingService
   }
 
   private getOrdersById(
-    ids: string[],
-    subject: Subject,
+    ids: (string | undefined)[] | undefined,
+    subject?: Subject,
     context?: any
-  ): Promise<DeepPartial<OrderListResponse>> {
+  ): Promise<OrderListResponse> {
     const order_ids = [... new Set(ids)];
 
     if (order_ids.length > 1000) {
@@ -504,7 +513,7 @@ export class OrderingService
   }
 
   private getOrderMap(
-    ids: string[],
+    ids: (string | undefined)[] | undefined,
     subject?: Subject,
     context?: any,
   ): Promise<OrderMap> {
@@ -515,30 +524,30 @@ export class OrderingService
     ).then(
       response => {
         if (response.operation_status?.code === 200) {
-          return response.items.reduce(
+          return response?.items?.reduce(
             (a, b) => {
-              a[b.payload.id] = b as OrderResponse;
+              a[b.payload?.id!] = b as OrderResponse;
               return a;
             },
             {} as OrderMap
-          );
+          ) ?? {};
         }
         else {
           throw response.operation_status;
         }
       }
-    );
+    ) ?? {};
   }
 
   private async mapBundles(products: ProductMap) {
     const product_ids = [...new Set(Object.values(products).filter(
       (product) => !!product.payload?.bundle
     ).flatMap(
-      (product) => product.payload.bundle.products.map(
+      (product) => product.payload?.bundle?.products?.map(
         (item) => item.product_id
       )
     ).filter(
-      id => !!products[id]
+      id => !!products[id!]
     )).values()];
 
     if (product_ids.length) {
@@ -555,8 +564,8 @@ export class OrderingService
       }).then(
         response => {
           if (response.operation_status?.code === 200) {
-            response.items.forEach(
-              item => products[item.payload?.id] = item
+            response.items?.forEach(
+              item => products[item.payload?.id!] = item
             );
           }
           else {
@@ -579,40 +588,40 @@ export class OrderingService
     const variant = main?.product?.physical?.variants?.find(v => v.id === variant_id);
     if (variant) {
       return [{
-        product_id: main.id,
+        product_id: main!.id,
         variant_id,
         quantity,
         package: variant.package,
       }];
     }
-    else if (main.bundle?.pre_packaged) {
+    else if (main!.bundle?.pre_packaged) {
       return [{
-        product_id: main.id,
+        product_id: main!.id,
         variant_id,
         quantity,
-        package: main.bundle.pre_packaged,
+        package: main!.bundle.pre_packaged,
       }];
     }
     else {
-      return main.bundle?.products.flatMap(
+      return main!.bundle?.products?.flatMap(
         item => this.flatMapProductToFulfillmentItem(
           products,
-          item.product_id,
+          item.product_id!,
           item.variant_id,
           item.quantity,
         )
-      );
+      ) ?? [];
     }
   };
 
   private async getProductMap(
-    orders: Order[],
+    orders: (Order | undefined)[] | undefined,
     subject?: Subject,
     context?: any,
   ): Promise<ProductMap> {
-    const product_ids = [...new Set<string>(orders.flatMap(
-      (o) => o.items?.map(
-        (item) => item.product_id
+    const product_ids = [...new Set<string>(orders?.flatMap(
+      (o) => o?.items?.map(
+        (item) => item.product_id!
       ) ?? []
     ).filter(
       (id) => !!id
@@ -647,7 +656,7 @@ export class OrderingService
         if (response.operation_status?.code === 200) {
           return response.items?.reduce(
             (a, b) => {
-              a[b.payload?.id] = b;
+              a[b.payload?.id!] = b;
               return a;
             }, {} as ProductMap
           ) ?? {} as ProductMap;
@@ -670,10 +679,10 @@ export class OrderingService
     const getTaxIdsRecursive = (
       product: ProductResponse
     ): string[] => {
-      return product.payload?.product.tax_ids ??
-        product.payload?.bundle?.products.flatMap(
-          (p) => getTaxIdsRecursive(products[p.product_id])
-        );
+      return product.payload?.product?.tax_ids ??
+        product.payload?.bundle?.products?.flatMap(
+          (p) => getTaxIdsRecursive(products[p.product_id!])
+        ) ?? [];
     };
 
     const tax_ids = JSON.stringify([
@@ -708,26 +717,26 @@ export class OrderingService
         if (response.operation_status?.code === 200) {
           return response.items?.reduce(
             (a, b) => {
-              a[b.payload?.id] = b.payload;
+              a[b.payload?.id!] = b.payload!;
               return a;
             },
             {} as RatioedTaxMap
-          );
+          ) ?? {};
         }
         else {
           throw response.operation_status;
         }
       }
-    );
+    ) ?? {};
   }
 
   private async getFulfillmentMap(
-    order_ids: string[],
+    order_ids: (string | undefined)[] | undefined,
     subject?: Subject,
     context?: any,
   ): Promise<FulfillmentMap> {
     if (!!this.fulfillment_service) return {};
-    order_ids = [...new Set<string>(order_ids)];
+    order_ids = [...new Set<string | undefined>(order_ids ?? [])];
 
     if (order_ids.length > 1000) {
       throw this.createOperationStatusCode(
@@ -736,7 +745,7 @@ export class OrderingService
       );
     }
 
-    return await this.fulfillment_service.read(
+    return await this.fulfillment_service!.read(
       {
         filters: [{
           filters: [
@@ -762,30 +771,30 @@ export class OrderingService
         if (response.operation_status?.code === 200) {
           return response.items?.reduce(
             (a, b) => {
-              if (b.payload?.id in a) {
-                a[b.payload?.id].push(b);
+              if (b.payload?.id! in a) {
+                a[b.payload?.id!].push(b);
               }
               else {
-                a[b.payload?.id] = [b];
+                a[b.payload?.id!] = [b];
               }
               return a;
             }, {} as FulfillmentMap
-          );
+          ) ?? {};
         }
         else {
           throw response.operation_status;
         }
       }
-    );
+    ) ?? {};
   }
 
   private get<T>(
-    ids: string[],
+    ids: (string | undefined)[],
     service: CRUDClient,
     subject?: Subject,
     context?: any,
   ): Promise<T> {
-    ids = [...new Set<string>(ids)];
+    ids = [...new Set<string | undefined>(ids)];
     const entity = typeof ({} as T);
 
     if (ids.length > 1000) {
@@ -829,35 +838,35 @@ export class OrderingService
   }
 
   private async getById<T>(
-    id: string,
+    id: string | undefined,
     map: { [id: string]: T },
-    request_id: string,
+    request_id?: string,
   ): Promise<T> {
-    if (map && id in map) {
+    if (id && id in map) {
       return map[id];
     }
     else {
       throw this.createStatusCode(
-        request_id,
+        request_id ?? 'undefined',
         ({} as new() => T)?.name,
         this.status_codes.NOT_FOUND,
-        id,
+        id ?? 'undefined',
       );
     }
   }
 
   private async getByIds<T>(
-    ids: string[],
+    ids: (string | undefined)[] | undefined,
     map: { [id: string]: T },
-    request_id: string,
+    request_id?: string,
   ): Promise<T[]> {
-    return Promise.all(ids.map(
+    return Promise.all(ids?.map(
       id => this.getById(
         id,
         map,
         request_id,
       )
-    ));
+    ) ?? []);
   }
 
   private async aggregateOrders(
@@ -866,7 +875,7 @@ export class OrderingService
     context?: any
   ): Promise<DeepPartial<OrderListResponse>> {
     const product_map = await this.getProductMap(
-      order_list.items,
+      order_list.items ?? [],
       subject,
       context
     );
@@ -876,20 +885,20 @@ export class OrderingService
       context
     );
     const customer_map = await this.get<CustomerMap>(
-      order_list.items?.map(item => item.customer_id),
+      order_list.items?.map(item => item.customer_id) ?? [],
       this.customer_service,
       subject,
       context,
     );
     const shop_map = await this.get<ShopMap>(
-      order_list.items?.map(item => item.shop_id),
+      order_list.items?.map(item => item.shop_id) ?? [],
       this.shop_service,
       subject,
       context,
     );
     const organization_map = await this.get<OrganizationMap>(
       Object.values(
-        shop_map ?? []
+        shop_map
       ).map(
         item => item.payload?.organization_id
       ),
@@ -899,7 +908,7 @@ export class OrderingService
     );
     const contact_point_map = await this.get<ContactPointMap>(
       Object.values(
-        organization_map ?? []
+        organization_map
       ).flatMap(
         item => item.payload?.contact_point_ids
       ),
@@ -909,7 +918,7 @@ export class OrderingService
     );
     const address_map = await this.get<AddressMap>(
       Object.values(
-        contact_point_map ?? []
+        contact_point_map
       ).map(
         item => item.payload?.physical_address_id
       ),
@@ -920,12 +929,12 @@ export class OrderingService
     const country_map = await this.get<CountryMap>(
       [
         ...Object.values(
-          tax_map ?? []
+          tax_map
         ).map(
           t => t.country_id
         ),
         ...Object.values(
-          address_map ?? []
+          address_map
         ).map(
           item => item.payload?.country_id
         )
@@ -936,25 +945,28 @@ export class OrderingService
     );
 
     const getTaxesRecursive = (
-      main: Product,
+      main: Product | undefined,
       price_ratio = 1.0
     ): RatioedTax[] => {
-      return [].concat(
+      return ([] as RatioedTax[]).concat(
         main?.product?.tax_ids?.map(id => ({
-          ...tax_map[id],
+          ...(tax_map[id] ?? {}),
           tax_ratio: price_ratio
-        })),
-        main?.bundle?.products.flatMap(
-          p => getTaxesRecursive(product_map[p.product_id]?.payload, p.price_ratio * price_ratio)
-        )
+        })) ?? [],
+        main?.bundle?.products?.flatMap(
+          p => getTaxesRecursive(
+            product_map[p?.product_id!]?.payload!,
+            (p.price_ratio ?? 0) * price_ratio
+          )
+        ) ?? []
       );
     };
 
     const mergeProductVariantRecursive = (
       nature: ProductNature,
-      variant_id: string,
-    ): ProductVariant => {
-      const variant = nature.variants.find(v => v.id === variant_id);
+      variant_id: string | undefined,
+    ): ProductVariant | undefined => {
+      const variant = nature?.variants?.find(v => v.id === variant_id);
       if (variant?.parent_variant_id) {
         const template = mergeProductVariantRecursive(
           nature, variant.parent_variant_id
@@ -972,29 +984,31 @@ export class OrderingService
     const promises = order_list.items?.map(async (order) => {
       try {
         const customer = await this.getById(
-          order.customer_id,
+          order?.customer_id,
           customer_map,
           order.id,
         );
         const shop = await this.getById(
-          order.shop_id,
+          order?.shop_id,
           shop_map,
           order.id,
         );
         const country = await this.getById(
-          shop.payload.organization_id,
+          shop.payload?.organization_id,
           organization_map,
           order.id,
         ).then(
           orga => this.getByIds(
-            orga.payload.contact_point_ids,
+            orga.payload!.contact_point_ids!,
             contact_point_map,
             order.id,
           )
         ).then(
           cps => cps.find(
-            cp => cp.payload.contact_point_type_ids.indexOf(
-              this.legal_address_type_id
+            cp => (
+              cp.payload?.contact_point_type_ids?.indexOf(
+                this.legal_address_type_id
+              ) ?? -1
             ) >= 0
           )
         ).then(
@@ -1009,7 +1023,7 @@ export class OrderingService
             }
             else {
               return this.getById(
-                cp.payload.physical_address_id,
+                cp.payload?.physical_address_id,
                 address_map,
                 order.id,
               );
@@ -1017,7 +1031,7 @@ export class OrderingService
           }
         ).then(
           address => this.getById(
-            address.payload.country_id,
+            address.payload?.country_id,
             country_map,
             order.id,
           )
@@ -1029,7 +1043,7 @@ export class OrderingService
           order.user_id = customer.payload.private.user_id;
         }
 
-        if (order.items?.length > 0) {
+        if (order.items?.length) {
           await Promise.all(order.items?.map(
             async (item) => {
               if (!order.shipping_address) {
@@ -1047,7 +1061,7 @@ export class OrderingService
                 order.id,
               );
               const shipping_address = await this.getById(
-                order.shipping_address.address.country_id,
+                order.shipping_address?.address?.country_id,
                 country_map,
                 order.id,
               );
@@ -1055,21 +1069,21 @@ export class OrderingService
               const variant = mergeProductVariantRecursive(nature, item.variant_id);
               const taxes = getTaxesRecursive(product.payload).filter(t => !!t);
               const unit_price = product.payload?.bundle ? product.payload?.bundle?.price : variant?.price;
-              const gross = (unit_price.sale ? unit_price.sale_price : unit_price.regular_price) * item.quantity;
+              const gross = (unit_price?.sale ? unit_price?.sale_price ?? 0 : unit_price?.regular_price ?? 0) * (item.quantity ?? 0);
               const vats = taxes.filter(
                 t => (
-                  t.country_id === country.id &&
+                  t.country_id === country?.id &&
                   !!customer?.payload?.private?.user_id &&
-                  country.country_code in COUNTRY_CODES_EU &&
-                  shipping_address?.payload.country_code in COUNTRY_CODES_EU
+                  country?.country_code! in COUNTRY_CODES_EU &&
+                  shipping_address?.payload?.country_code! in COUNTRY_CODES_EU
                 )
               ).map(
                 t => ({
                   tax_id: t.id,
-                  vat: gross * t.rate * t.tax_ratio
+                  vat: gross * t.rate! * t.tax_ratio!
                 }) as VAT
               );
-              const net = vats.reduce((a, b) => b.vat + a, gross);
+              const net = vats.reduce((a, b) => b.vat! + a, gross);
               item.unit_price = unit_price;
               item.amount = {
                 gross,
@@ -1077,7 +1091,7 @@ export class OrderingService
                 vats,
               };
             }
-          ));
+          ) ?? []);
         }
         else {
           throw this.createStatusCode(
@@ -1090,14 +1104,14 @@ export class OrderingService
 
         order.total_amounts = Object.values(order.items?.reduce(
           (amounts, item) => {
-            const amount = amounts[item.amount.currency_id];
+            const amount = amounts[item.amount?.currency_id!];
             if (amount) {
-              amount.gross += item.amount.gross;
-              amount.net += item.amount.net;
-              amount.vats.push(...item.amount.vats);
+              amount.gross! += item.amount?.gross!;
+              amount.net! += item.amount?.net!;
+              amount.vats!.push(...item.amount?.vats!);
             }
             else {
-              amounts[item.amount.currency_id] = { ...item.amount };
+              amounts[item.amount?.currency_id!] = { ...item.amount };
             }
             return amounts;
           },
@@ -1107,18 +1121,18 @@ export class OrderingService
         order.total_amounts.forEach(
           amount => {
             amount.vats = Object.values(
-              amount.vats.reduce(
+              amount.vats?.reduce(
                 (vats, vat) => {
-                  if (vat.tax_id in vats) {
-                    vats[vat.tax_id].vat = (vats[vat.tax_id]?.vat ?? 0) + vat.vat;
+                  if (vat.tax_id! in vats) {
+                    vats[vat.tax_id!].vat = (vats[vat.tax_id!]?.vat ?? 0) + vat.vat!;
                   }
                   else {
-                    vats[vat.tax_id] = { ...vat };
+                    vats[vat.tax_id!] = { ...vat };
                   }
                   return vats;
                 },
                 {} as { [key: string]: VAT }
-              )
+              ) ?? {}
             );
           }
         );
@@ -1133,7 +1147,7 @@ export class OrderingService
           ),
         } as OrderResponse;
       }
-      catch (e) {
+      catch (e: any) {
         if (order) {
           order.order_state = OrderState.INVALID;
         };
@@ -1180,11 +1194,11 @@ export class OrderingService
       );
 
       const items = Object.values(responseMap).filter(
-        item => item.status.code === 200
+        item => item.status?.code === 200 && item.payload
       ).map(
         item => {
-          item.payload.order_state = state;
-          return item.payload;
+          item.payload!.order_state = state;
+          return item.payload!;
         }
       );
 
@@ -1197,16 +1211,16 @@ export class OrderingService
         context
       );
 
-      if (response.operation_status.code === 200) {
+      if (response.operation_status?.code === 200) {
         response.items?.forEach(
           (item: OrderResponse) => {
-            responseMap[item.payload?.id ?? item.status?.id] = item;
-            if (item.status?.code === 200 && item?.payload?.order_state in this.emitters) {
-              switch (item.payload.order_state) {
+            responseMap[item.payload?.id ?? item.status?.id!] = item;
+            if (item.status?.code === 200 && item?.payload?.order_state! in this.emitters) {
+              switch (item.payload?.order_state) {
                 case OrderState.INVALID, OrderState.FAILED:
                   this.topic.emit(this.emitters[item.payload.order_state], item);
                 default:
-                  this.topic.emit(this.emitters[item.payload.order_state], item.payload);
+                  this.topic.emit(this.emitters[item.payload?.order_state!], item.payload!);
                   break;
               }
             }
@@ -1342,7 +1356,7 @@ export class OrderingService
     context?: any
   ): Promise<OrderSubmitListResponse> {
     try {
-      const unauthenticated = request.subject.unauthenticated
+      const unauthenticated = request.subject?.unauthenticated
         || !request.subject?.id?.length
         || request.subject?.id === this.unauthenticated_user?.id;
 
@@ -1378,11 +1392,11 @@ export class OrderingService
 
       const responseMap = request.items?.reduce(
         (a, b) => {
-          a[b.id] = {};
+          a[b.id!] = {};
           return a;
         },
         {} as { [key: string]: OrderResponse }
-      );
+      ) ?? {};
 
       const { items, operation_status } = await this.aggregateOrders(
         request,
@@ -1392,14 +1406,14 @@ export class OrderingService
         response => ({
           items: response.items?.filter(
             (item: OrderResponse) => {
-              if (item.status?.id in responseMap) {
-                responseMap[item.status.id] = item;
+              if (item.status?.id! in responseMap) {
+                responseMap[item.status?.id!] = item;
               }
               return item.status?.code === 200;
             }
           ).map(
             item => {
-              item.payload.order_state = OrderState.SUBMITTED;
+              item.payload!.order_state = OrderState.SUBMITTED;
               return item.payload as Order;
             }
           ),
@@ -1407,7 +1421,7 @@ export class OrderingService
         })
       );
 
-      if (!items.length) {
+      if (!items?.length) {
         return {
           orders: Object.values(responseMap),
           operation_status,
@@ -1423,9 +1437,9 @@ export class OrderingService
         context,
       ) as OrderListResponse;
 
-      orders.items.forEach(
+      orders.items?.forEach(
         item => {
-          responseMap[item.payload?.id ?? item.status?.id] = item;
+          responseMap[item.payload?.id ?? item.status?.id!] = item;
         }
       );
 
@@ -1439,7 +1453,7 @@ export class OrderingService
           {
             items: orders.items?.filter(
               order => order.status?.code === 200
-                ?? order.payload?.packaging_preferences?.options?.find(
+                || order.payload?.packaging_preferences?.options?.find(
                   att => att.id === this.urn_disable_fulfillment
                 )?.value === 'true'
             ).map(
@@ -1452,7 +1466,7 @@ export class OrderingService
           context,
         ).then(
           response => {
-            if (response.operation_status?.code < 300) {
+            if (response.operation_status?.code! < 300) {
               return response.items;
             }
             else {
@@ -1461,11 +1475,11 @@ export class OrderingService
           }
         );
 
-        response.fulfillments.forEach(
+        response.fulfillments!.forEach(
           fulfillment => {
             fulfillment.payload?.references?.forEach(
               reference => {
-                const order = responseMap[reference.instance_id];
+                const order = responseMap[reference.instance_id!];
                 if (fulfillment.status?.code !== 200 && order) {
                   order.payload = {
                     ...order.payload,
@@ -1486,8 +1500,8 @@ export class OrderingService
         response.invoices = await this.createInvoice(
           {
             items: orders.items?.filter(
-              order => order.status.code === 200
-                ?? order.payload?.packaging_preferences?.options?.find(
+              order => order.status?.code === 200
+                || order.payload?.packaging_preferences?.options?.find(
                   att => att.id === this.urn_disable_invoice
                 )?.value === 'true'
             ).map(
@@ -1505,7 +1519,7 @@ export class OrderingService
           context,
         ).then(
           response => {
-            if (response.operation_status?.code < 300) {
+            if (response.operation_status?.code! < 300) {
               return response.items;
             }
             else {
@@ -1514,11 +1528,11 @@ export class OrderingService
           }
         );
 
-        response.invoices.forEach(
+        response.invoices?.forEach(
           invoice => {
-            invoice.payload?.references.forEach(
+            invoice.payload?.references?.forEach(
               reference => {
-                const order = responseMap[reference.instance_id];
+                const order = responseMap[reference.instance_id!];
                 if (invoice.status?.code !== 200 && order) {
                   order.payload = {
                     ...order.payload,
@@ -1535,22 +1549,22 @@ export class OrderingService
         );
       }
 
-      const failed_order_ids = orders.items.filter(
+      const failed_order_ids = orders.items?.filter(
         order => order.status?.code !== 200
       ).map(
-        order => order.payload?.id ?? order.status?.id
-      );
+        order => order.payload?.id ?? order.status?.id!
+      ) ?? [];
 
       if (this.cleanup_fulfillments_post_submit) {
-        const failed_fulfillment_ids = response.fulfillments.filter(
+        const failed_fulfillment_ids = response.fulfillments?.filter(
           fulfillment => fulfillment.payload?.references?.find(
-            reference => reference.instance_id in failed_order_ids
+            reference => reference.instance_id! in failed_order_ids
           )
         ).map(
-          fulfillment => fulfillment.payload?.id
+          fulfillment => fulfillment.payload?.id!
         );
 
-        if (failed_fulfillment_ids.length) {
+        if (failed_fulfillment_ids?.length) {
           await this.fulfillment_service?.delete(
             {
               ids: failed_fulfillment_ids,
@@ -1562,15 +1576,15 @@ export class OrderingService
       }
 
       if (this.cleanup_invoices_post_submit) {
-        const failed_invoice_ids = response.invoices.filter(
+        const failed_invoice_ids = response.invoices?.filter(
           invoice => invoice.payload?.references?.find(
-            reference => reference.instance_id in failed_order_ids
+            reference => reference.instance_id! in failed_order_ids
           )
         ).map(
-          invoice => invoice.payload?.id
+          invoice => invoice.payload?.id!
         );
 
-        if (failed_invoice_ids.length) {
+        if (failed_invoice_ids?.length) {
           await this.invoice_service?.delete(
             {
               ids: failed_invoice_ids,
@@ -1593,13 +1607,13 @@ export class OrderingService
       Object.values(responseMap).forEach(
         item => {
           if (
-            item.payload?.order_state in this.emitters
+            item.payload?.order_state! in this.emitters
           ) {
-            switch (item.payload.order_state) {
+            switch (item.payload?.order_state) {
               case OrderState.INVALID, OrderState.FAILED:
                 this.topic.emit(this.emitters[item.payload.order_state], item);
               default:
-                this.topic.emit(this.emitters[item.payload.order_state], item.payload);
+                this.topic.emit(this.emitters[item.payload?.order_state!], item.payload!);
                 break;
             }
           }
@@ -1626,7 +1640,7 @@ export class OrderingService
     context?: any
   ): Promise<OrderListResponse> {
     return this.updateState(
-      request.ids,
+      request.ids ?? [],
       OrderState.WITHDRAWN,
       request.subject,
       context,
@@ -1646,7 +1660,7 @@ export class OrderingService
     context?: any
   ): Promise<OrderListResponse> {
     return this.updateState(
-      request.ids,
+      request.ids ?? [],
       OrderState.CANCELLED,
       request.subject,
       context,
@@ -1674,37 +1688,37 @@ export class OrderingService
     orders?: OrderMap,
     products?: ProductMap,
   ): Promise<PackingSolutionListResponse> {
-    const responseMap = request.items.reduce(
+    const responseMap = request.items?.reduce(
       (a, b) => {
-        a[b.order_id] = {
+        a[b.order_id!] = {
           reference: {
             instance_type: this.instanceType,
             instance_id: b.order_id,
           },
-          solutions: null,
-          status: null,
+          solutions: undefined,
+          status: undefined,
         };
         return a;
       },
       {} as { [key: string]: PackingSolutionResponse }
-    );
+    ) ?? {};
 
     orders = orders ?? await this.getOrderMap(
-      request.items.map(item => item.order_id),
+      request.items?.map(item => item.order_id!),
       request.subject,
       context
-    );
+    ) ?? {};
 
     products = products ?? await this.getProductMap(
       Object.values(orders).map(item => item.payload),
       request.subject,
       context,
-    );
+    ) ?? {};
 
-    const items = request.items.filter(
+    const items = request.items?.filter(
       item => {
-        const response = responseMap[item.order_id];
-        const order = orders[item.order_id];
+        const response = responseMap[item.order_id!];
+        const order = orders?.[item.order_id!];
 
         if (!order) {
           response.status = this.createStatusCode(
@@ -1716,7 +1730,7 @@ export class OrderingService
           return false;
         }
 
-        if (order.status.code !== 200) {
+        if (order.status?.code! !== 200) {
           response.status = order.status;
           return false;
         }
@@ -1725,18 +1739,18 @@ export class OrderingService
       }
     ).map(
       item => {
-        const response = responseMap[item.order_id];
-        const order = orders[item.order_id];
-        const items = order.payload.items.flatMap(
+        const response = responseMap[item.order_id!];
+        const order = orders?.[item.order_id!];
+        const items = order?.payload?.items?.flatMap(
           item => this.flatMapProductToFulfillmentItem(
-            products,
-            item.product_id,
+            products!,
+            item.product_id!,
             item.variant_id,
             item.quantity
           )
         );
 
-        if (items.length === 0) {
+        if (items?.length === 0) {
           response.status = this.createStatusCode(
             item.order_id,
             this.entityName,
@@ -1747,36 +1761,36 @@ export class OrderingService
 
         return {
           sender: item.sender_address,
-          receiver: order.payload.shipping_address,
+          receiver: order?.payload?.shipping_address,
           items,
-          preferences: order.payload.packaging_preferences,
-          order_id: order.payload.id,
+          preferences: order?.payload?.packaging_preferences,
+          order_id: order?.payload?.id,
         } as PackingSolutionQuery;
       }
     ).filter(
-      item => item.items.length > 0
+      item => item.items?.length
     );
 
     const query = {
       items,
-      total_count: items.length,
+      total_count: items?.length,
       subject: request.subject
     } as PackingSolutionQueryList;
-    const solutions = await this.fulfillment_product_service.find(
+    const solutions = await this.fulfillment_product_service?.find(
       query,
       context
     );
 
-    solutions.items.forEach(
+    solutions?.items?.forEach(
       item => {
-        responseMap[item.reference.instance_id ?? item.status.id] = item;
+        responseMap[item.reference?.instance_id ?? item.status?.id!] = item;
       }
     );
 
     return {
       items: Object.values(responseMap),
       total_count: request.total_count,
-      operation_status: solutions.operation_status,
+      operation_status: solutions?.operation_status,
     };
   }
 
@@ -1805,7 +1819,7 @@ export class OrderingService
     context?: any,
   ): Promise<FulfillmentResponse[]> {
     const orders = await this.getOrderMap(
-      request.items.map(
+      request.items?.map(
         item => item.order_id
       ),
       request.subject,
@@ -1814,11 +1828,11 @@ export class OrderingService
 
     Object.values(orders).forEach(
       order => {
-        if (order.payload.order_state !== OrderState.SUBMITTED) {
+        if (order.payload?.order_state !== OrderState.SUBMITTED) {
           order.status = {
-            id: order.payload.id,
+            id: order.payload?.id,
             code: 400,
-            message: `${this.name} state ${order.payload.order_state} expected to be ${OrderState.SUBMITTED}`,
+            message: `${this.name} state ${order.payload?.order_state} expected to be ${OrderState.SUBMITTED}`,
           } as Status;
         }
       }
@@ -1830,10 +1844,10 @@ export class OrderingService
       orders,
     ).then(
       response => {
-        if (response.operation_status.code === 200) {
-          return response.items.reduce(
+        if (response.operation_status?.code === 200) {
+          return response.items?.reduce(
             (a, b) => {
-              a[b.reference?.instance_id ?? b.status.id] = b;
+              a[b.reference?.instance_id ?? b.status?.id!] = b;
               return a;
             },
             {} as PackingSolutionMap
@@ -1845,10 +1859,10 @@ export class OrderingService
       }
     );
 
-    return request.items.map(
+    return request.items?.map(
       item => {
-        const order = orders[item.order_id];
-        const solution = solutions[item.order_id];
+        const order = orders[item.order_id!];
+        const solution = solutions?.[item.order_id!];
         const status = [
           solution?.status,
           order?.status,
@@ -1867,22 +1881,22 @@ export class OrderingService
                   instance_id: item.order_id,
                 }],
                 packaging: {
-                  parcels: solution.solutions[0].parcels,
-                  notify: order.payload.notification_email,
+                  parcels: solution?.solutions?.[0]?.parcels,
+                  notify: order.payload?.notification_email,
                   export_type: item.export_type,
                   export_description: item.export_description,
                   invoice_number: item.invoice_number,
                   sender: item.sender_address,
-                  recipient: order.payload.shipping_address,
+                  recipient: order.payload?.shipping_address,
                 } as Packaging,
-                total_amounts: solution.solutions[0].amounts,
-              } : null,
+                total_amounts: solution?.solutions?.[0]?.amounts,
+              } : undefined,
           status,
         };
 
         return fulfillment;
       }
-    );
+    ) ?? [];
   }
 
   @access_controlled_function({
@@ -1913,13 +1927,13 @@ export class OrderingService
           items: prototypes.filter(
             proto => proto.status?.code === 200
           ).map(
-            proto => proto.payload
+            proto => proto.payload!
           ),
           subject: request.subject,
         }
       );
 
-      const response = await this.fulfillment_service.create(
+      const response = await this.fulfillment_service!.create(
         {
           items: valids.items,
           total_count: valids.items.length ?? 0,
@@ -1930,10 +1944,10 @@ export class OrderingService
 
       return {
         items: [
-          ...response.items,
+          ...response.items!,
           ...invalids
         ],
-        total_count: response.items.length + invalids.length,
+        total_count: response.items?.length! + invalids.length,
         operation_status: invalids.length
           ? this.createOperationStatusCode(
             'fulfillment',
@@ -1960,13 +1974,13 @@ export class OrderingService
     context?: any
   ): Promise<FulfillmentListResponse> {
     try {
-      const responseMap = request.items.reduce(
+      const responseMap = request.items?.reduce(
         (a, b) => {
-          a[b.order_id] = {};
+          a[b.order_id!] = {};
           return a;
         },
         {} as { [key: string]: FulfillmentResponse }
-      );
+      ) ?? {};
 
       const items = await this.toFulfillmentResponsePrototypes(
         request,
@@ -1975,10 +1989,10 @@ export class OrderingService
         prototypes => {
           return prototypes.filter(
             item => {
-              if (item.status?.id in responseMap) {
-                responseMap[item.status.id].status = item.status as Status;
+              if (item.status?.id! in responseMap) {
+                responseMap[item.status?.id!].status = item.status as Status;
               }
-              return item.status.code === 200;
+              return item.status?.code === 200;
             }
           ).map(
             item => item.payload
@@ -2018,8 +2032,8 @@ export class OrderingService
     context?: any,
   ): Promise<InvoiceResponse[]> {
     const order_map = await this.getOrderMap(
-      request.items.flatMap(
-        item => item.sections.map(
+      request.items?.flatMap(
+        item => item.sections?.map(
           section => section.order_id
         )
       ),
@@ -2028,8 +2042,8 @@ export class OrderingService
     );
 
     const fulfillment_map = await this.getFulfillmentMap(
-      request.items.flatMap(
-        item => item.sections.map(
+      request.items?.flatMap(
+        item => item.sections?.map(
           section => section.order_id
         )
       ),
@@ -2037,27 +2051,27 @@ export class OrderingService
       context,
     );
 
-    return request.items.map(
+    return request.items?.map(
       item => {
-        const master = order_map[item.sections[0]?.order_id];
+        const master = order_map[item.sections?.[0]?.order_id!];
         if (master?.status?.code !== 200) {
           return {
-            payload: null,
+            payload: undefined,
             status: master?.status ?? this.createStatusCode(
-              item.sections[0]?.order_id,
+              item.sections?.[0]?.order_id,
               this.entityName,
               this.status_codes.NOT_FOUND,
-              item.sections[0]?.order_id,
+              item.sections?.[0]?.order_id,
             )
           };
         }
 
-        for (let section of item.sections) {
-          const order = order_map[section.order_id];
+        for (let section of item.sections!) {
+          const order = order_map[section.order_id!];
 
           if (order?.status?.code !== 200) {
             return {
-              payload: null,
+              payload: undefined,
               status: order?.status ?? this.createStatusCode(
                 section.order_id,
                 this.entityName,
@@ -2071,7 +2085,7 @@ export class OrderingService
             order.payload?.shop_id !== master?.payload?.shop_id
           ) {
             return {
-              payload: null,
+              payload: undefined,
               status: this.createStatusCode(
                 section.order_id,
                 typeof(order.payload),
@@ -2085,28 +2099,28 @@ export class OrderingService
         return {
           payload: {
             invoice_number: item.invoice_number,
-            user_id: master.payload.user_id,
-            customer_id: master.payload.customer_id,
-            shop_id: master.payload.shop_id,
-            references: item.sections.map(
+            user_id: master.payload?.user_id,
+            customer_id: master.payload?.customer_id,
+            shop_id: master.payload?.shop_id,
+            references: item.sections?.map(
               section => ({
                 instance_type: this.instanceType,
                 instance_id: section.order_id,
               })
             ),
-            customer_remark: master.payload.customer_remark,
-            sender: master.payload.billing_address,
-            recipient: master.payload.billing_address,
-            total_amounts: master.payload.total_amounts,
-            sections: item.sections.map(
+            customer_remark: master.payload?.customer_remark,
+            sender: master.payload?.billing_address,
+            recipient: master.payload?.billing_address,
+            total_amounts: master.payload?.total_amounts,
+            sections: item.sections?.map(
               section => {
-                const order = order_map[section.order_id];
+                const order = order_map[section.order_id!];
                 const product_items = (
-                  section.selected_items?.length > 0
-                    ? order.payload.items.filter(
-                      item => item.id in section.selected_items
-                    )
-                    : order.payload.items
+                  section.selected_items?.length
+                    ? order.payload?.items?.filter(
+                      item => item.id! in section.selected_items!
+                    ) ?? []
+                    : order.payload?.items ?? []
                 ).map(
                   (item, i): Position => ({
                     id: (i + 1).toString().padStart(3, '0'),
@@ -2124,36 +2138,36 @@ export class OrderingService
                 const fulfillment_items: Parcel[] = Object.values((
                   section.fulfillment_mode === FulfillmentInvoiceMode.INCLUDE && (
                     section.selected_fulfillments?.flatMap(
-                      selection => fulfillment_map[section.order_id].find(
-                        fulfillment => fulfillment.payload.id === selection.fulfillment_id
-                      ).payload.packaging.parcels.filter(
+                      selection => fulfillment_map[section?.order_id!]?.find(
+                        fulfillment => fulfillment.payload?.id === selection?.fulfillment_id
+                      )?.payload?.packaging?.parcels?.filter(
                         parcel =>
-                          selection.selected_parcels.length === 0 ||
-                          parcel.id in selection.selected_parcels
+                          selection?.selected_parcels?.length === 0 ||
+                          parcel.id! in selection.selected_parcels!
                       )
-                    ) ?? fulfillment_map[section.order_id]?.flatMap(
-                      fulfillment => fulfillment.payload.packaging.parcels
+                    ) ?? fulfillment_map[section.order_id!]?.flatMap(
+                      fulfillment => fulfillment.payload?.packaging?.parcels
                     )
                   ) || []
                 ).reduce(
                   (a, b, i) => {
-                    const id = `${b.product_id}___${b.variant_id}`;
+                    const id = `${b?.product_id}___${b?.variant_id}`;
                     const c = a[id];
                     if (c) {
-                      c.quantity += 1;
-                      c.amount.gross += b.amount.gross;
-                      c.amount.net += b.amount.net;
-                      c.amount.vats.push(...b.amount.vats);
+                      c.quantity! += 1;
+                      c.amount!.gross! += b?.amount?.gross!;
+                      c.amount!.net! += b?.amount?.net!;
+                      c.amount!.vats!.push(...b?.amount?.vats!);
                     }
                     else {
                       a[id] = {
                         id: (i + product_items.length + 1).toString().padStart(3, '0'),
-                        unit_price: b.price,
+                        unit_price: b?.price,
                         quantity: 1,
-                        amount: b.amount,
+                        amount: b?.amount,
                         fulfillment_item: {
-                          product_id: b.product_id,
-                          variant_id: b.variant_id,
+                          product_id: b?.product_id,
+                          variant_id: b?.variant_id,
                         },
                         attributes: [],
                       };
@@ -2165,28 +2179,28 @@ export class OrderingService
 
                 fulfillment_items.forEach(
                   item => {
-                    item.amount.vats = Object.values(
-                      item.amount.vats.reduce(
+                    item!.amount!.vats = Object.values(
+                      item.amount?.vats?.reduce(
                         (a, b) => {
-                          const c = a[b.tax_id];
+                          const c = a[b.tax_id!];
                           if (c) {
-                            c.vat += b.vat;
+                            c.vat! += b.vat!;
                           }
                           else {
-                            a[b.tax_id] = { ...b };
+                            a[b.tax_id!] = { ...b };
                           }
                           return a;
                         },
                         {} as VATMap
-                      )
+                      ) ?? {}
                     );
                   }
                 );
 
                 return {
                   id: section.order_id,
-                  amounts: order.payload.total_amounts,
-                  customer_remark: order.payload.customer_remark,
+                  amounts: order.payload?.total_amounts,
+                  customer_remark: order.payload?.customer_remark,
                   positions: [
                     ...product_items,
                     ...fulfillment_items,
@@ -2196,14 +2210,14 @@ export class OrderingService
             )
           },
           status: this.createStatusCode(
-            master.payload.id,
+            master.payload?.id,
             'Invoice',
             this.status_codes.OK,
-            master.payload.id,
+            master.payload?.id,
           ),
         };
       }
-    );
+    ) ?? [];
   }
 
   @access_controlled_function({
@@ -2229,10 +2243,10 @@ export class OrderingService
       const valids = prototypes.filter(
         proto => proto.status?.code === 200
       ).map(
-        proto => proto.payload
+        proto => proto.payload!
       );
 
-      const response = await this.invoice_service.render(
+      const response = await this.invoice_service!.render(
         {
           items: valids,
           total_count: valids.length,
@@ -2243,10 +2257,10 @@ export class OrderingService
 
       return {
         items: [
-          ...response.items,
+          ...response.items!,
           ...invalids
         ],
-        total_count: response.items.length + invalids.length,
+        total_count: response.items?.length! + invalids.length,
         operation_status: invalids.length
           ? this.createOperationStatusCode(
             'Invoice',
@@ -2272,6 +2286,6 @@ export class OrderingService
     request: OrderingInvoiceRequestList,
     context?: any,
   ): Promise<StatusListResponse> {
-    return null;
+    throw 'Not yet implemented!';
   };
 }
