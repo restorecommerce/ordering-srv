@@ -275,7 +275,7 @@ const contactPoints = [
     payload: {
       id: 'contactPoint_1',
       contactPointTypeIds: [
-        'legal_address'
+        'legal'
       ],
       name: 'Contact Point 1',
       description: 'A mocked Contact Point for testing',
