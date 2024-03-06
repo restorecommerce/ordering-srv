@@ -536,7 +536,7 @@ export class OrderingService
           throw response.operation_status;
         }
       }
-    ) ?? {};
+    );
   }
 
   private async mapBundles(products: ProductMap) {
@@ -654,12 +654,12 @@ export class OrderingService
     ).then(
       (response) => {
         if (response.operation_status?.code === 200) {
-          return response.items?.reduce(
+          return response.items!.reduce(
             (a, b) => {
               a[b.payload?.id!] = b;
               return a;
             }, {} as ProductMap
-          ) ?? {} as ProductMap;
+          );
         }
         else {
           throw response.operation_status;
@@ -667,7 +667,9 @@ export class OrderingService
       }
     );
 
-    await this.mapBundles(products);
+    if (products) {
+      await this.mapBundles(products);
+    }
     return products;
   }
 
@@ -679,10 +681,18 @@ export class OrderingService
     const getTaxIdsRecursive = (
       product: ProductResponse
     ): string[] => {
-      return product.payload?.product?.tax_ids ??
-        product.payload?.bundle?.products?.flatMap(
-          (p) => getTaxIdsRecursive(products[p.product_id!])
-        ) ?? [];
+      return [
+        ...product.payload!.product?.tax_ids ?? [],
+        ...product.payload!.product?.physical?.variants?.flatMap(
+          variant => variant.tax_ids ?? []
+        ) ?? [],
+        ...product.payload!.product?.virtual?.variants?.flatMap(
+          variant => variant.tax_ids ?? []
+        ) ?? [],
+        ...product.payload!.bundle?.products?.flatMap(
+          (p) => getTaxIdsRecursive(products[p.product_id!]!)
+        ) ?? []
+      ];
     };
 
     const tax_ids = JSON.stringify([
@@ -727,7 +737,7 @@ export class OrderingService
           throw response.operation_status;
         }
       }
-    ) ?? {};
+    );
   }
 
   private async getFulfillmentMap(
@@ -785,7 +795,7 @@ export class OrderingService
           throw response.operation_status;
         }
       }
-    ) ?? {};
+    );
   }
 
   private get<T>(
@@ -944,22 +954,48 @@ export class OrderingService
       context,
     );
 
-    const getTaxesRecursive = (
-      main: Product | undefined,
+    const getTaxesRecursive = async (
+      main: Product,
       price_ratio = 1.0
-    ): RatioedTax[] => {
-      return ([] as RatioedTax[]).concat(
-        main?.product?.tax_ids?.map(id => ({
-          ...(tax_map[id] ?? {}),
-          tax_ratio: price_ratio
-        })) ?? [],
-        main?.bundle?.products?.flatMap(
-          p => getTaxesRecursive(
-            product_map[p?.product_id!]?.payload!,
-            (p.price_ratio ?? 0) * price_ratio
-          )
-        ) ?? []
-      );
+    ): Promise<RatioedTax[]> => {
+      if (main.bundle) {
+        return await Promise.all(
+          main?.bundle?.products?.flatMap(
+            p => getTaxesRecursive(
+              product_map[p?.product_id!]?.payload!,
+              (p.price_ratio ?? 0) * price_ratio
+            )
+          ) ?? []
+        ).then(
+          promise => promise.flatMap(p => p)
+        );
+      }
+      else {
+        return await Promise.all([
+          ...main.product?.tax_ids?.map(
+            async (id) => ({
+              ...(await this.getById(id, tax_map)),
+              tax_ratio: price_ratio
+            } as RatioedTax)
+          ) ?? [],
+          ...main.product?.physical?.variants!.flatMap(
+            variant => variant.tax_ids?.map(
+              async (id) => ({
+                ...(await this.getById(id, tax_map)),
+                tax_ratio: price_ratio
+              } as RatioedTax)
+            ) ?? []
+          ) ?? [],
+          ...main.product?.virtual?.variants!.flatMap(
+            variant => variant.tax_ids?.map(
+              async (id) => ({
+                ...(await this.getById(id, tax_map)),
+                tax_ratio: price_ratio
+              } as RatioedTax)
+            ) ?? []
+          ) ?? [],
+        ]);
+      }
     };
 
     const mergeProductVariantRecursive = (
@@ -1065,17 +1101,18 @@ export class OrderingService
                 country_map,
                 order.id,
               );
-              const nature = (product.payload?.product?.physical ?? product.payload?.product?.virtual) as ProductNature;
+              const nature = (product.payload!.product?.physical ?? product.payload!.product?.virtual) as ProductNature;
               const variant = mergeProductVariantRecursive(nature, item.variant_id);
-              const taxes = getTaxesRecursive(product.payload).filter(t => !!t);
-              const unit_price = product.payload?.bundle ? product.payload?.bundle?.price : variant?.price;
+              const taxes = await getTaxesRecursive(product.payload!);
+              const unit_price = product.payload!.bundle ? product.payload!.bundle?.price : variant?.price;
               const gross = (unit_price?.sale ? unit_price?.sale_price ?? 0 : unit_price?.regular_price ?? 0) * (item.quantity ?? 0);
               const vats = taxes.filter(
                 t => (
                   t.country_id === country?.id &&
-                  !!customer?.payload?.private?.user_id &&
+                  !!customer?.payload!.private?.user_id &&
                   country?.country_code! in COUNTRY_CODES_EU &&
-                  shipping_address?.payload?.country_code! in COUNTRY_CODES_EU
+                  shipping_address?.payload!.country_code! in COUNTRY_CODES_EU &&
+                  (variant?.tax_ids?.length && t.id! in variant.tax_ids)
                 )
               ).map(
                 t => ({
