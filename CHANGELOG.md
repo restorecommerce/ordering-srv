@@ -1,3 +1,11 @@
+## 0.1.1 (March 8th, 2024)
+
+- feat: tax-ids in product.variants
+
+## 0.1.0 (March 1st, 2024)
+
+- esbuild support
+
 ## 0.0.15 (November 27th, 2023)
 
 - bump deps
