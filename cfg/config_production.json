@@ -62,12 +62,15 @@
       "address": "resource-srv:50051"
     },
     "fulfillment": {
+      "disabled": true,
       "address": "fulfillment-srv:50051"
     },
     "fulfillment_product": {
+      "disabled": true,
       "address": "fulfillment-srv:50051"
     },
     "invoice": {
+      "disabled": true,
       "address": "invoice-srv:50051"
     }
   },
@@ -75,6 +78,9 @@
     "client": {
       "acs-srv": {
         "address": "access-control-srv:50051"
+      },
+      "user": {
+        "address": "identity-srv:50051"
       }
     },
     "cache": {
