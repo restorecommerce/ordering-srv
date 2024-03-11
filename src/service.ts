@@ -384,7 +384,10 @@ export class OrderingService
 
     // optional Fulfillment
     const fulfillment_cfg = cfg.get('client:fulfillment');
-    if (fulfillment_cfg && !fulfillment_cfg.disabled) {
+    if (fulfillment_cfg.disabled) {
+      // ignore!
+    }
+    else if (fulfillment_cfg) {
       this.creates_fulfillments_on_submit = fulfillment_cfg.createOnSubmit;
       this.cleanup_fulfillments_post_submit = fulfillment_cfg.cleanupPostSubmit;
       this.fulfillment_tech_user = fulfillment_cfg.users?.tech_user;
@@ -402,7 +405,10 @@ export class OrderingService
     }
 
     const fulfillment_product_cfg = cfg.get('client:fulfillment_product');
-    if (fulfillment_product_cfg && !fulfillment_product_cfg.disabled) {
+    if (fulfillment_product_cfg.disabled) {
+      // ignore!
+    }
+    else if (fulfillment_product_cfg) {
       this.fulfillment_product_service = createClient(
         {
           ...fulfillment_product_cfg,
@@ -417,7 +423,10 @@ export class OrderingService
     }
 
     const invoicing_cfg = cfg.get('client:invoice');
-    if (invoicing_cfg && !invoicing_cfg.disabled) {
+    if (invoicing_cfg.disabled) {
+      // ignore!
+    }
+    else if (invoicing_cfg) {
       this.creates_invoices_on_submit = invoicing_cfg.createOnSubmit;
       this.cleanup_invoices_post_submit = invoicing_cfg.cleanupPostSubmit;
       this.invoice_tech_user = invoicing_cfg.users?.tech_user;
