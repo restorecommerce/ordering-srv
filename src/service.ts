@@ -232,7 +232,11 @@ export class OrderingService
     },
     NO_ITEM: {
       code: 400,
-      message: 'No item in cart',
+      message: 'No item in cart!',
+    },
+    ITEM_NOT_FOUND: {
+      code: 404,
+      message: '{entity} not found!',
     },
   };
 
@@ -494,7 +498,7 @@ export class OrderingService
     subject?: Subject,
     context?: any
   ): Promise<OrderListResponse> {
-    const order_ids = [... new Set(ids)];
+    const order_ids = [...new Set(ids)];
 
     if (order_ids.length > 1000) {
       throw this.createOperationStatusCode(
@@ -636,7 +640,13 @@ export class OrderingService
       (id) => !!id
     )).values()];
 
-    if (product_ids.length > 1000) {
+    if (!product_ids.length) {
+      throw this.createOperationStatusCode(
+        'product',
+        this.operation_status_codes.NO_ITEM,
+      );
+    }
+    else if (product_ids.length > 1000) {
       throw this.createOperationStatusCode(
         'product',
         this.operation_status_codes.LIMIT_EXHAUSTED,
@@ -662,16 +672,22 @@ export class OrderingService
       context,
     ).then(
       (response) => {
-        if (response.operation_status?.code === 200) {
+        if (response.operation_status?.code !== 200) {
+          throw response.operation_status;
+        }
+        else if (!response.items?.length) {
+          throw this.createOperationStatusCode(
+            'products',
+            this.operation_status_codes.ITEM_NOT_FOUND,
+          );
+        }
+        else {
           return response.items!.reduce(
             (a, b) => {
               a[b.payload?.id!] = b;
               return a;
             }, {} as ProductMap
           );
-        }
-        else {
-          throw response.operation_status;
         }
       }
     );
@@ -733,17 +749,23 @@ export class OrderingService
       context
     ).then(
       response => {
-        if (response.operation_status?.code === 200) {
-          return response.items?.reduce(
+        if (response.operation_status?.code !== 200) {
+          throw response.operation_status;
+        }
+        else if (!response.items?.length) {
+          throw this.createOperationStatusCode(
+            'taxes',
+            this.operation_status_codes.ITEM_NOT_FOUND,
+          );
+        }
+        else {
+          return response.items!.reduce(
             (a, b) => {
               a[b.payload?.id!] = b.payload!;
               return a;
             },
             {} as RatioedTaxMap
           ) ?? {};
-        }
-        else {
-          throw response.operation_status;
         }
       }
     );
@@ -807,7 +829,7 @@ export class OrderingService
     );
   }
 
-  private get<T>(
+  private async get<T>(
     ids: (string | undefined)[],
     service: CRUDClient,
     subject?: Subject,
@@ -823,7 +845,7 @@ export class OrderingService
       );
     }
 
-    return service.read(
+    return await service.read(
       {
         filters: [{
           filters: [
@@ -841,16 +863,22 @@ export class OrderingService
       context,
     ).then(
       (response: any) => {
-        if (response.operation_status?.code === 200) {
+        if (response.operation_status?.code !== 200) {
+          throw response.operation_status;
+        }
+        else if (!response.items?.length) {
+          throw this.createOperationStatusCode(
+            entity,
+            this.operation_status_codes.ITEM_NOT_FOUND,
+          );
+        }
+        else {
           return response.items?.reduce(
             (a: any, b: any) => {
               a[b.payload?.id] = b;
               return a;
             }, {} as T
           );
-        }
-        else {
-          throw response.operation_status;
         }
       }
     );
@@ -892,9 +920,18 @@ export class OrderingService
     order_list: OrderList,
     subject?: Subject,
     context?: any
-  ): Promise<DeepPartial<OrderListResponse>> {
+  ): Promise<OrderListResponse> {
+    if (!order_list?.items?.length) {
+      return {
+        operation_status: this.createOperationStatusCode(
+          'order',
+          this.operation_status_codes.NO_ITEM,
+        )
+      };
+    }
+
     const product_map = await this.getProductMap(
-      order_list.items ?? [],
+      order_list.items,
       subject,
       context
     );
@@ -1223,7 +1260,7 @@ export class OrderingService
       items,
       total_count: items.length ?? 0,
       operation_status,
-    } as OrderListResponse;
+    };
   }
 
   public async updateState(
@@ -1365,10 +1402,10 @@ export class OrderingService
   }
 
   @access_controlled_function({
-    action: AuthZAction.READ,
-    operation: Operation.whatIsAllowed,
+    action: AuthZAction.EXECUTE,
+    operation: Operation.isAllowed,
     context: DefaultACSClientContextFactory,
-    resource: [{ resource: 'order' }],
+    resource: DefaultResourceFactory('execution.evaluateOrders'),
     database: 'arangoDB',
     useCache: true,
   })
