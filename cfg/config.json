@@ -274,6 +274,9 @@
     "client": {
       "acs-srv": {
         "address": "localhost:50061"
+      },
+      "user": {
+        "address": "localhost:50051"
       }
     },
     "urns": {
