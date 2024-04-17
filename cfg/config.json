@@ -156,7 +156,7 @@
             "queuedJob": "handleQueuedJob"
           }
         },
-        "ordering": {
+        "ordering.resource": {
           "topic": "io.restorecommerce.ordering.resource",
           "events": {
             "createOrders": "handleCreateOrders",

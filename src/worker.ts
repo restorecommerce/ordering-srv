@@ -31,8 +31,6 @@ import { Logger } from 'winston';
 import { BindConfig } from '@restorecommerce/chassis-srv/lib/microservice/transport/provider/grpc/index.js';
 import { HealthDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated-server/grpc/health/v1/health.js';
 import { ServerReflectionService } from 'nice-grpc-server-reflection';
-import { Fulfillment } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment.js';
-import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth.js';
 import { OrderingCommandInterface } from './command_interface.js';
 import { initAuthZ } from '@restorecommerce/acs-client';
 
