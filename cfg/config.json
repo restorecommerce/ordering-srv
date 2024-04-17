@@ -157,7 +157,7 @@
             "queuedJob": "handleQueuedJob"
           }
         },
-        "ordering.resource": {
+        "ordering": {
           "topic": "io.restorecommerce.ordering.resource",
           "events": {
             "createOrders": "handleCreateOrders",
@@ -169,7 +169,7 @@
             "cancelOrders": "handleCancelOrders"
           }
         },
-        "fulfillment.resource": {
+        "fulfillment": {
           "topic": "io.restorecommerce.fulfillment.resource",
           "events": {
             "fulfillmentSubmitted": "handleFulfillmentSubmitted",

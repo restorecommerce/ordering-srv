@@ -111,7 +111,6 @@ import {
   VAT
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/amount.js';
 import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth.js';
-import { COUNTRY_CODES_EU } from './utils.js';
 
 export type RatioedTax = Tax & {
   tax_ratio?: number;
@@ -1142,8 +1141,8 @@ export class OrderingService
                 product_map,
                 order.id,
               );
-              const shipping_address = await this.getById(
-                order.shipping_address?.address?.country_id,
+              const billing_address = await this.getById(
+                order.billing_address?.address?.country_id,
                 country_map,
                 order.id,
               );
@@ -1156,9 +1155,10 @@ export class OrderingService
                 t => (
                   t.country_id === country?.id &&
                   !!customer?.payload!.private?.user_id &&
-                  country?.country_code! in COUNTRY_CODES_EU &&
-                  shipping_address?.payload!.country_code! in COUNTRY_CODES_EU &&
-                  (variant?.tax_ids?.length && t.id! in variant.tax_ids)
+                  country?.economic_areas?.some(
+                    ea => billing_address?.payload?.economic_areas?.includes(ea)
+                  ) &&
+                  (variant?.tax_ids?.length && variant.tax_ids?.includes(t.id!))
                 )
               ).map(
                 t => ({
