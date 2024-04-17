@@ -341,7 +341,7 @@ const validOrders: { [key: string]: OrderList } = {
             quantity: 4,
           }
         ],
-        orderState: OrderState.CREATED,
+        orderState: OrderState.PENDING,
         totalAmounts: [],
         notificationEmail: 'user@test.spec',
         packagingPreferences: {
@@ -376,7 +376,7 @@ const validOrders: { [key: string]: OrderList } = {
         userId: 'user_1',
         customerId: 'customer_1',
         shopId: 'shop_1',
-        orderState: OrderState.CREATED,
+        orderState: OrderState.PENDING,
         totalAmounts: [],
         notificationEmail: 'user@test.spec',
         packagingPreferences: {
@@ -423,7 +423,7 @@ const invalidOrders: { [key: string]: OrderList } = {
         totalAmounts: [],
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
-        orderState: OrderState.CREATED,
+        orderState: OrderState.PENDING,
       },
       {
         id: 'invalidOrder_2',
@@ -441,7 +441,7 @@ const invalidOrders: { [key: string]: OrderList } = {
           options: [],
         },
         totalAmounts: [],
-        orderState: OrderState.CREATED,
+        orderState: OrderState.PENDING,
       }
     ],
     totalCount: 2,
@@ -473,7 +473,7 @@ const invalidOrders: { [key: string]: OrderList } = {
         totalAmounts: [],
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
-        orderState: OrderState.CREATED,
+        orderState: OrderState.PENDING,
       }
     ],
     totalCount: 1,

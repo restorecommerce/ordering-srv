@@ -35,7 +35,7 @@ describe('The Ordering Service:', () => {
   const orderSubmittedSemaphore = new Semaphore(0);
 
   const onOrderCreated = (msg: Order_, context?:any): void => {
-    should.equal(msg?.order_state, Order_State.CREATED);
+    should.equal(msg?.order_state, Order_State.PENDING);
     orderCreatedSemaphore.release(1);
   };
 

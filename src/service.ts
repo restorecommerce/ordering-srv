@@ -1231,9 +1231,6 @@ export class OrderingService
         } as OrderResponse;
       }
       catch (e: any) {
-        if (order) {
-          order.order_state = OrderState.INVALID;
-        };
         return {
           payload: order,
           status: {
@@ -1298,14 +1295,11 @@ export class OrderingService
         response.items?.forEach(
           (item: OrderResponse) => {
             responseMap[item.payload?.id ?? item.status?.id!] = item;
-            if (item.status?.code === 200 && item?.payload?.order_state! in this.emitters) {
-              switch (item.payload?.order_state) {
-                case OrderState.INVALID, OrderState.FAILED:
-                  this.topic.emit(this.emitters[item.payload.order_state], item);
-                default:
-                  this.topic.emit(this.emitters[item.payload?.order_state!], item.payload!);
-                  break;
-              }
+            if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
+              this.topic.emit(this.emitters['INVALID'], item.payload!);
+            }
+            else if (item?.payload?.order_state! in this.emitters) {
+              this.topic.emit(this.emitters[item.payload?.order_state!], item.payload!);
             }
           }
         );
@@ -1356,7 +1350,7 @@ export class OrderingService
     request?.items?.forEach(
       item => {
         if (!item.order_state || item.order_state === OrderState.UNRECOGNIZED) {
-          item.order_state = OrderState.CREATED;
+          item.order_state = OrderState.PENDING;
         }
       }
     );
@@ -1394,7 +1388,7 @@ export class OrderingService
     request?.items?.forEach(
       item => {
         if (!item.order_state || item.order_state === OrderState.UNRECOGNIZED) {
-          item.order_state = OrderState.CREATED;
+          item.order_state = OrderState.PENDING;
         }
       }
     );
@@ -1564,10 +1558,6 @@ export class OrderingService
               reference => {
                 const order = responseMap[reference.instance_id!];
                 if (fulfillment.status?.code !== 200 && order) {
-                  order.payload = {
-                    ...order.payload,
-                    order_state: OrderState.INVALID
-                  };
                   order.status = {
                     ...fulfillment.status,
                     id: order.payload?.id ?? order.status?.id,
@@ -1617,10 +1607,6 @@ export class OrderingService
               reference => {
                 const order = responseMap[reference.instance_id!];
                 if (invoice.status?.code !== 200 && order) {
-                  order.payload = {
-                    ...order.payload,
-                    order_state: OrderState.INVALID
-                  };
                   order.status = {
                     ...invoice.status,
                     id: order.payload?.id ?? order.status?.id,
@@ -1640,8 +1626,8 @@ export class OrderingService
 
       if (this.cleanup_fulfillments_post_submit) {
         const failed_fulfillment_ids = response.fulfillments?.filter(
-          fulfillment => fulfillment.payload?.references?.find(
-            reference => reference.instance_id! in failed_order_ids
+          fulfillment => fulfillment.payload?.references?.some(
+            reference => failed_order_ids.includes(reference.instance_id!)
           )
         ).map(
           fulfillment => fulfillment.payload?.id!
@@ -1661,7 +1647,7 @@ export class OrderingService
       if (this.cleanup_invoices_post_submit) {
         const failed_invoice_ids = response.invoices?.filter(
           invoice => invoice.payload?.references?.find(
-            reference => reference.instance_id! in failed_order_ids
+            reference => failed_order_ids.includes(reference.instance_id!)
           )
         ).map(
           invoice => invoice.payload?.id!
@@ -1689,16 +1675,11 @@ export class OrderingService
 
       Object.values(responseMap).forEach(
         item => {
-          if (
-            item.payload?.order_state! in this.emitters
-          ) {
-            switch (item.payload?.order_state) {
-              case OrderState.INVALID, OrderState.FAILED:
-                this.topic.emit(this.emitters[item.payload.order_state], item);
-              default:
-                this.topic.emit(this.emitters[item.payload?.order_state!], item.payload!);
-                break;
-            }
+          if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
+            this.topic.emit(this.emitters['INVALID'], item.payload!);
+          }
+          else if (item.payload?.order_state! in this.emitters) {
+            this.topic.emit(this.emitters[item.payload?.order_state!], item.payload!);
           }
         }
       );

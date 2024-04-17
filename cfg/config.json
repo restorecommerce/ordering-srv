@@ -39,11 +39,10 @@
   "events": {
     "enableEvents": true,
     "emitters": {
-      "FAILED": "orderFailed",
       "INVALID": "orderInvalid",
+      "PENDING": "orderPending",
       "SUBMITTED": "orderSubmitted",
-      "IN_PROCESS": "orderInProcess",
-      "DONE": "orderDone",
+      "COMPLETED": "orderCompleted",
       "WITHDRAWN": "orderWithdrawn",
       "CANCELLED": "orderCancelled",
       "CREATE_FULFILLMENTS": "createFulfillments",
@@ -167,17 +166,6 @@
             "fulfillOrders": "handleFulfillOrders",
             "withdrawOrders": "handleWithdrawOrders",
             "cancelOrders": "handleCancelOrders"
-          }
-        },
-        "fulfillment": {
-          "topic": "io.restorecommerce.fulfillment.resource",
-          "events": {
-            "fulfillmentSubmitted": "handleFulfillmentSubmitted",
-            "fulfillmentInvalid": "handleFulfillmentInvalid",
-            "fulfillmentFailed": "handleFulfillmentFailed",
-            "fulfillmentFulfilled": "handleFulfillmentFulfilled",
-            "fulfillmentWithdrawn": "handleFulfillmentWithdrawn",
-            "fulfillmentCancelled": "handleFulfillmentCancelled"
           }
         }
       }

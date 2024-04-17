@@ -170,66 +170,6 @@ export class Worker {
         error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
       );
     },
-    handleFulfillmentSubmitted: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      const refs = msg?.references?.filter(ref => ref.instance_type === this.orderingService?.instanceType);
-      if (!refs?.length) return;
-      const ids = refs!.map(ref => ref.instance_id!);
-      const subject = {} as Subject; // System Admin?
-      return this.orderingService?.updateState(ids, OrderState.IN_PROCESS, subject, context).then(
-        () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
-      );
-    },
-    handleFulfillmentInvalid: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      const refs = msg?.references?.filter(ref => ref.instance_type === this.orderingService?.instanceType);
-      if (!refs?.length) return;
-      const ids = refs!.map(ref => ref.instance_id!);
-      const subject = {} as Subject; // System Admin?
-      return this.orderingService?.updateState(ids, OrderState.INVALID, subject, context).then(
-        () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
-      );
-    },
-    handleFulfillmentFulfilled: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      const refs = msg?.references?.filter(ref => ref.instance_type === this.orderingService?.instanceType);
-      if (!refs?.length) return;
-      const ids = refs!.map(ref => ref.instance_id!);
-      const subject = {} as Subject; // System Admin?
-      return this.orderingService?.updateState(ids, OrderState.DONE, subject, context).then(
-        () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
-      );
-    },
-    handleFulfillmentFailed: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      const refs = msg?.references?.filter(ref => ref.instance_type === this.orderingService?.instanceType);
-      if (!refs?.length) return;
-      const ids = refs!.map(ref => ref.instance_id!);
-      const subject = {} as Subject; // System Admin?
-      return this.orderingService?.updateState(ids, OrderState.FAILED, subject, context).then(
-        () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
-      );
-    },
-    handleFulfillmentWithdrawn: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      const refs = msg?.references?.filter(ref => ref.instance_type === this.orderingService?.instanceType);
-      if (!refs?.length) return;
-      const ids = refs!.map(ref => ref.instance_id!);
-      const subject = {} as Subject; // System Admin?
-      return this.orderingService?.updateState(ids, OrderState.CANCELLED, subject, context).then(
-        () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
-      );
-    },
-    handleFulfillmentCancelled: (msg: Fulfillment, context: any, config: any, eventName: string) => {
-      const refs = msg?.references?.filter(ref => ref.instance_type === this.orderingService?.instanceType);
-      if (!refs?.length) return;
-      const ids = refs!.map(ref => ref.instance_id!);
-      const subject = {} as Subject; // System Admin?
-      return this.orderingService?.updateState(ids, OrderState.CANCELLED, subject, context).then(
-        () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
-      );
-    },
     handleQueuedJob: (msg: any, context: any, config: any, eventName: string) => {
       return this.serviceActions?.get(msg?.type)?.(msg?.data?.payload, context, config, msg?.type).then(
         () => this.logger?.info(`Job ${msg?.type} done.`),
