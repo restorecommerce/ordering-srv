@@ -21,6 +21,13 @@
       ],
       "entities": [
         "order"
+      ],
+      "customQueries": [
+        {
+          "path": "queries/filter_ownership.aql",
+          "name": "filterByOwnership",
+          "type": "filter"
+        }
       ]
     }
   },
