@@ -2,8 +2,7 @@
   "extends": "./node_modules/@restorecommerce/dev/tsconfig.json",
   "compilerOptions": {
     "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "strictNullChecks": true
+    "experimentalDecorators": true
   },
   "include": [
     "./src/**/*.ts"

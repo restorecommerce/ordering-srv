@@ -18,16 +18,17 @@
   ],
   "type": "module",
   "dependencies": {
-    "@restorecommerce/acs-client": "^1.6.0",
+    "@restorecommerce/acs-client": "^1.6.3",
     "@restorecommerce/chassis-srv": "^1.6.0",
     "@restorecommerce/cluster-service": "^1.0.3",
     "@restorecommerce/grpc-client": "^2.2.1",
     "@restorecommerce/kafka-client": "^1.2.1",
     "@restorecommerce/logger": "^1.2.10",
-    "@restorecommerce/rc-grpc-clients": "^5.1.23",
+    "@restorecommerce/rc-grpc-clients": "^5.1.25",
     "@restorecommerce/resource-base-interface": "^1.6.0",
     "@restorecommerce/service-config": "^1.0.12",
-    "redis": "^4.6.13"
+    "redis": "^4.6.13",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@alenon/grpc-mock-server": "^3.1.10",
@@ -41,6 +42,7 @@
     "@types/mocha": "^10.0.6",
     "@types/nconf": "^0.10.6",
     "@types/node": "^20.12.7",
+    "@types/uuid": "^9.0.8",
     "@typescript-eslint/eslint-plugin": "^7.7.0",
     "@typescript-eslint/parser": "^7.7.0",
     "async-mutex": "^0.5.0",
