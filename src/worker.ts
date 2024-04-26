@@ -15,7 +15,6 @@ import {
   OrderIdList,
   OrderList,
   OrderServiceDefinition,
-  OrderState,
   protoMetadata as OrderMeta,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order.js';
 import {

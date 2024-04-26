@@ -16,13 +16,10 @@ import {
   Operation,
   DefaultResourceFactory,
   DefaultMetaDataInjector,
-  DatabaseProvider,
-} from '@restorecommerce/acs-client';
-import {
   access_controlled_function,
   access_controlled_service,
   injects_meta_data,
-} from './experimental.js';
+} from '@restorecommerce/acs-client';
 import {
   ResourcesAPIBase,
   ServiceBase,
