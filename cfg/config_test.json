@@ -7,6 +7,11 @@
       "prettyPrint": true
     }
   },
+  "database": {
+    "main": {
+      "database": "ordering-srv-test"
+    }
+  },
   "authorization": {
     "client": null
   },

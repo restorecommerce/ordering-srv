@@ -69,7 +69,13 @@ describe('The Ordering Service:', () => {
   after(async function() {
     this.timeout(30000);
     await Promise.allSettled([
-      client?.delete({ collection: true }),
+      client?.delete({
+        collection: true,
+        subject: {
+          id: 'superadmin',
+          token: 'superadmin',
+        }
+      }),
       topics.removeListener('orderCreated', onOrderCreated),
       topics.removeListener('orderSubmitted', onOrderSubmitted),
     ]).finally(

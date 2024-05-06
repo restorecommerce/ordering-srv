@@ -667,23 +667,23 @@ export const rules = {
   'acs-srv': {
     isAllowed: (
       call: any,
-      callback: (error: any, response: DeepPartial<Response>) => void,
+      callback: (error: any, response: Response) => void,
     ) => callback(null, {
       decision: Response_Decision.PERMIT,
     }),
     whatIsAllowed: (
       call: any,
-      callback: (error: any, response: DeepPartial<ReverseQuery>) => void,
+      callback: (error: any, response: ReverseQuery) => void,
     ) => callback(null, whatIsAllowed),
   },
   user: {
     read: (
       call: any,
-      callback: (error: any, response: DeepPartial<UserListResponse>) => void,
+      callback: (error: any, response: UserListResponse) => void,
     ) => callback(null, {}),
     findByToken: (
       call: any,
-      callback: (error: any, response: DeepPartial<UserResponse>) => void,
+      callback: (error: any, response: UserResponse) => void,
     ) => {
       getRedisInstance().then(
         async client => {
@@ -707,7 +707,7 @@ export const rules = {
   shop: {
     read: (
       call: any,
-      callback: (error: any, response: DeepPartial<ShopListResponse>) => void,
+      callback: (error: any, response: ShopListResponse) => void,
     ) => callback(null, {
       items: shops,
       totalCount: shops.length,
@@ -717,7 +717,7 @@ export const rules = {
   organization: {
     read: (
       call: any,
-      callback: (error: any, response: DeepPartial<OrganizationListResponse>) => void,
+      callback: (error: any, response: OrganizationListResponse) => void,
     ) => callback(null, {
       items: organizations,
       totalCount: organizations.length,
@@ -727,7 +727,7 @@ export const rules = {
   customer: {
     read: (
       call: any,
-      callback: (error: any, response: DeepPartial<CustomerListResponse>) => void,
+      callback: (error: any, response: CustomerListResponse) => void,
     ) => callback(null, {
       items: [
         {
@@ -754,7 +754,7 @@ export const rules = {
   contact_point: {
     read: (
       call: any,
-      callback: (error: any, response: DeepPartial<ContactPointListResponse>) => void,
+      callback: (error: any, response: ContactPointListResponse) => void,
     ) => callback(null, {
       items: contactPoints,
       totalCount: contactPoints.length,
@@ -764,7 +764,7 @@ export const rules = {
   address: {
     read: (
       call: any,
-      callback: (error: any, response: DeepPartial<AddressListResponse>) => void,
+      callback: (error: any, response: AddressListResponse) => void,
     ) => callback(null, {
       items: [
         ...residentialAddresses,
@@ -784,7 +784,7 @@ export const rules = {
   country: {
     read: (
       call: any,
-      callback: (error: any, response: DeepPartial<CountryListResponse>) => void,
+      callback: (error: any, response: CountryListResponse) => void,
     ) => callback(null, {
       items: countries,
       totalCount: countries.length,
@@ -794,7 +794,7 @@ export const rules = {
   product: {
     read: (
       call: any,
-      callback: (error: any, response: DeepPartial<ProductListResponse>) => void,
+      callback: (error: any, response: ProductListResponse) => void,
     ) => callback(null, {
       items: products,
       totalCount: products.length,
@@ -804,7 +804,7 @@ export const rules = {
   tax: {
     read: (
       call: any,
-      callback: (error: any, response: DeepPartial<TaxListResponse>) => void,
+      callback: (error: any, response: TaxListResponse) => void,
     )=> callback(null, {
       items: taxes,
       totalCount: 1,
@@ -814,7 +814,7 @@ export const rules = {
   tax_type: {
     read: (
       call: any,
-      callback: (error: any, response: DeepPartial<TaxTypeListResponse>) => void,
+      callback: (error: any, response: TaxTypeListResponse) => void,
     ) => callback(null, {
       items: [
         {
@@ -837,7 +837,7 @@ export const rules = {
   fulfillment_product: {
     find: (
       call: any,
-      callback: (error: any, response: DeepPartial<PackingSolutionListResponse>) => void,
+      callback: (error: any, response: PackingSolutionListResponse) => void,
     ) => callback(null, {
       items: [
         {
@@ -946,7 +946,7 @@ export const rules = {
   fulfillment: {
     create: (
       call: any,
-      callback: (error: any, response: DeepPartial<FulfillmentListResponse>) => void,
+      callback: (error: any, response: FulfillmentListResponse) => void,
     ) => callback(null, {
       items: call.request.items.map(
         (item: FulfillmentResponse) => ({
@@ -963,7 +963,7 @@ export const rules = {
   invoice: {
     create: (
       call: any,
-      callback: (error: any, response: DeepPartial<InvoiceListResponse>) => void,
+      callback: (error: any, response: InvoiceListResponse) => void,
     ) => callback(null, {
       items: [{
         payload: {
