@@ -5,10 +5,6 @@ import { createLogger } from '@restorecommerce/logger';
 // cfg and logger
 export const cfg = createServiceConfig(process.cwd());
 export const loggerCfg = cfg.get('logger');
-loggerCfg.esTransformer = (msg: any) => {
-  msg.fields = JSON.stringify(msg.fields);
-  return msg;
-};
 const logger = createLogger(loggerCfg);
 
 const worker = new Worker();
