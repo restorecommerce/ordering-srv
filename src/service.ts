@@ -1155,16 +1155,16 @@ export class OrderingService
         ];
 
         if (customer.payload?.private) {
-          order.customer_type = CustomerType.PRIVATE;
-          order.user_id = customer.payload.private.user_id;
+          order.customer_type ??= CustomerType.PRIVATE;
+          order.user_id ??= customer?.payload?.private?.user_id;
         }
         else if (customer.payload?.commercial) {
-          order.customer_type = CustomerType.COMMERCIAL;
-          order.customer_vat_id ??= organization.payload.vat_id;
+          order.customer_type ??= CustomerType.COMMERCIAL;
+          order.customer_vat_id ??= organization?.payload?.vat_id;
         }
         else if (customer.payload?.public_sector) {
-          order.customer_type = CustomerType.PUBLIC_SECTOR;
-          order.customer_vat_id ??= organization.payload.vat_id;
+          order.customer_type ??= CustomerType.PUBLIC_SECTOR;
+          order.customer_vat_id ??= organization?.payload?.vat_id;
         }
 
         if (order.items?.length) {
