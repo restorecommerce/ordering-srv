@@ -19,6 +19,7 @@ import {
   access_controlled_function,
   access_controlled_service,
   injects_meta_data,
+  injects_meta_data as resolves_subject,
 } from '@restorecommerce/acs-client';
 import {
   ResourcesAPIBase,
@@ -45,6 +46,8 @@ import {
   Product,
   ProductResponse,
   ProductServiceDefinition,
+  ServiceProduct,
+  ServiceVariant,
   VirtualProduct,
   VirtualVariant
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/product.js';
@@ -52,7 +55,7 @@ import {
   TaxServiceDefinition, Tax
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/tax.js';
 import {
-  CustomerServiceDefinition, CustomerResponse
+  CustomerServiceDefinition, CustomerResponse, CustomerType,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/customer.js';
 import {
   ShopServiceDefinition, ShopResponse
@@ -92,7 +95,8 @@ import {
 import {
   DeleteRequest,
   Filter_ValueType,
-  ReadRequest
+  ReadRequest,
+  ResourceList
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import {
   OperationStatus,
@@ -116,6 +120,22 @@ export type RatioedTax = Tax & {
   tax_ratio?: number;
 };
 
+export const DefaultSubjectResolver = async <T extends ResourceList>(
+  self: any,
+  request: T,
+  ...args: any
+): Promise<T> => {
+  const subject = request.subject;
+  subject.id = undefined;
+  if (subject?.token) {
+    const user = await self.__userService.findByToken({ token: subject.token });
+    if (user?.payload?.id) {
+      subject.id = user.payload.id;
+    }
+  }
+  return request;
+};
+
 export type OrderMap = { [key: string]: OrderResponse };
 export type ProductMap = { [key: string]: ProductResponse };
 export type FulfillmentMap = { [key: string]: FulfillmentResponse[] };
@@ -131,8 +151,8 @@ export type PositionMap = { [key: string]: Position };
 export type StatusMap = { [key: string]: Status };
 export type OperationStatusMap = { [key: string]: OperationStatus };
 export type VATMap = { [key: string]: VAT };
-export type ProductNature = PhysicalProduct & VirtualProduct;
-export type ProductVariant = PhysicalVariant & VirtualVariant;
+export type ProductNature = PhysicalProduct & VirtualProduct & ServiceProduct;
+export type ProductVariant = PhysicalVariant & VirtualVariant & ServiceVariant;
 export type CRUDClient = Client<ProductServiceDefinition>
 | Client<TaxServiceDefinition>
 | Client<CustomerServiceDefinition>
@@ -262,6 +282,16 @@ export class OrderingService
   protected readonly urn_instance_type: string;
   protected readonly urn_disable_fulfillment: string;
   protected readonly urn_disable_invoice: string;
+
+  get ApiKey(): Subject {
+    const apiKey = this.cfg.get('authentication:apiKey');
+    return apiKey
+      ? {
+        id: 'apiKey',
+        token: apiKey,
+      }
+      : undefined;
+  }
 
   get entityName() {
     return this.name;
@@ -1119,9 +1149,22 @@ export class OrderingService
         ).then(
           country => country.payload
         );
+        const organization = organization_map[
+          customer.payload?.commercial?.organization_id
+          ?? customer.payload?.public_sector?.organization_id
+        ];
 
-        if (customer.payload?.private?.user_id) {
+        if (customer.payload?.private) {
+          order.customer_type = CustomerType.PRIVATE;
           order.user_id = customer.payload.private.user_id;
+        }
+        else if (customer.payload?.commercial) {
+          order.customer_type = CustomerType.COMMERCIAL;
+          order.customer_vat_id ??= organization.payload.vat_id;
+        }
+        else if (customer.payload?.public_sector) {
+          order.customer_type = CustomerType.PUBLIC_SECTOR;
+          order.customer_vat_id ??= organization.payload.vat_id;
         }
 
         if (order.items?.length) {
@@ -1141,7 +1184,7 @@ export class OrderingService
                 product_map,
                 order.id,
               );
-              const billing_address = await this.getById(
+              const billing_country = await this.getById(
                 order.billing_address?.address?.country_id,
                 country_map,
                 order.id,
@@ -1156,7 +1199,7 @@ export class OrderingService
                   t.country_id === country?.id &&
                   !!customer?.payload!.private?.user_id &&
                   country?.economic_areas?.some(
-                    ea => billing_address?.payload?.economic_areas?.includes(ea)
+                    ea => billing_country?.payload?.economic_areas?.includes(ea)
                   ) &&
                   (variant?.tax_ids?.length && variant.tax_ids?.includes(t.id!))
                 )
@@ -1319,6 +1362,9 @@ export class OrderingService
     }
   }
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @access_controlled_function({
     action: AuthZAction.READ,
     operation: Operation.whatIsAllowed,
@@ -1334,6 +1380,9 @@ export class OrderingService
     return super.read(request, context);
   }
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.CREATE,
@@ -1357,6 +1406,9 @@ export class OrderingService
     return super.create(request, context);
   }
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @access_controlled_function({
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
@@ -1372,6 +1424,9 @@ export class OrderingService
     return super.update(request, context);
   }
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.MODIFY,
@@ -1395,6 +1450,9 @@ export class OrderingService
     return super.upsert(request, context);
   }
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -1419,6 +1477,9 @@ export class OrderingService
     }
   }
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
@@ -1452,7 +1513,8 @@ export class OrderingService
                 ],
                 operator: FilterOp_Operator.and,
               }
-            ]
+            ],
+            limit: 1,
           },
           context,
         ).then(
@@ -1691,6 +1753,9 @@ export class OrderingService
     }
   }
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -1711,6 +1776,9 @@ export class OrderingService
     );
   }
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -1731,6 +1799,9 @@ export class OrderingService
     );
   }
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @access_controlled_function({
     action: AuthZAction.DELETE,
     operation: Operation.isAllowed,
@@ -1858,6 +1929,9 @@ export class OrderingService
     };
   }
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @access_controlled_function({
     action: AuthZAction.READ,
     operation: Operation.whatIsAllowed,
@@ -1963,6 +2037,9 @@ export class OrderingService
     ) ?? [];
   }
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -2001,7 +2078,7 @@ export class OrderingService
         {
           items: valids.items,
           total_count: valids.items.length ?? 0,
-          subject: this.fulfillment_tech_user ?? request.subject,
+          subject: this.fulfillment_tech_user ?? this.ApiKey ?? request.subject,
         },
         context
       );
@@ -2025,6 +2102,9 @@ export class OrderingService
     }
   }
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -2284,6 +2364,9 @@ export class OrderingService
     ) ?? [];
   }
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @access_controlled_function({
     action: AuthZAction.CREATE,
     operation: Operation.isAllowed,
@@ -2314,7 +2397,7 @@ export class OrderingService
         {
           items: valids,
           total_count: valids.length,
-          subject: request.subject,
+          subject: this.invoice_tech_user ?? this.ApiKey ?? request.subject,
         },
         context
       );
@@ -2338,6 +2421,9 @@ export class OrderingService
     }
   };
 
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,

@@ -62,9 +62,6 @@ import {
   PaymentState
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/invoice.js';
 import {
-  DeepPartial
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/resource_base.js';
-import {
   Effect
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/rule.js';
 import {

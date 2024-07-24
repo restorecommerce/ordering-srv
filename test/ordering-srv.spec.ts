@@ -60,10 +60,10 @@ describe('The Ordering Service:', () => {
     ) as Client<OrderServiceDefinition>;
 
     await Promise.all([
-      topics.on('orderCreated', onOrderCreated),
-      topics.on('orderSubmitted', onOrderSubmitted),
+      topics?.on('orderCreated', onOrderCreated),
+      topics?.on('orderSubmitted', onOrderSubmitted),
     ]);
-    await topics.consumer.run();
+    await topics?.consumer?.run();
   });
 
   after(async function() {
@@ -76,8 +76,8 @@ describe('The Ordering Service:', () => {
           token: 'superadmin',
         }
       }),
-      topics.removeListener('orderCreated', onOrderCreated),
-      topics.removeListener('orderSubmitted', onOrderSubmitted),
+      topics?.removeListener('orderCreated', onOrderCreated),
+      topics?.removeListener('orderSubmitted', onOrderSubmitted),
     ]).finally(
       () => Promise.allSettled([
         events?.stop(),

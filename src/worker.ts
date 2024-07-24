@@ -275,13 +275,12 @@ export class Worker {
     } as BindConfig<HealthDefinition>);
 
     // Add reflection service
-    const reflectionServiceName = serviceNamesCfg.reflection;
     const reflectionService = buildReflectionService([
       { descriptor: OrderMeta.fileDescriptor as any },
       { descriptor: CommandInterfaceMeta.fileDescriptor as any },
     ]);
 
-    await this.server.bind(reflectionServiceName, {
+    await this.server.bind(serviceNamesCfg.reflection, {
       service: ServerReflectionService,
       implementation: reflectionService
     });

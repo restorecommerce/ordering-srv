@@ -36,12 +36,14 @@
     "offsetStoreInterval": 1000,
     "db-indexes": {
       "db-offsetStore": 0,
-      "db-subject": 4,
-      "db-orderStore": 9
+      "db-subject": 4
     }
   },
   "fieldHandlers": {
-    "timeStampFields": ["meta.created", "meta.modified"]
+    "timeStampFields": [
+      "meta.created",
+      "meta.modified"
+    ]
   },
   "events": {
     "enableEvents": true,
@@ -83,10 +85,10 @@
       "orderSubmitted": {
         "messageObject": "io.restorecommerce.order.Order"
       },
-      "orderInProcess": {
+      "orderPending": {
         "messageObject": "io.restorecommerce.order.Order"
       },
-      "orderDone": {
+      "orderCompleted": {
         "messageObject": "io.restorecommerce.order.Order"
       },
       "orderWithdrawn": {
@@ -105,10 +107,10 @@
       "restoreCommand": {
         "messageObject": "io.restorecommerce.commandinterface.CommandRequest"
       },
-      "healthCheckCommand": {
+      "resetCommand": {
         "messageObject": "io.restorecommerce.commandinterface.CommandRequest"
       },
-      "resetCommand": {
+      "healthCheckCommand": {
         "messageObject": "io.restorecommerce.commandinterface.CommandRequest"
       },
       "healthCheckResponse": {
@@ -209,13 +211,7 @@
       "disabled": false,
       "address": "localhost:50067",
       "createOnSubmit": true,
-      "cleanupPostSubmit": true,
-      "users": {
-        "tech_user": {
-          "id": "tech-user",
-          "token": "123099ffc93b44f6b4a81b1e5589b642"
-        }
-      }
+      "cleanupPostSubmit": true
     },
     "fulfillment_product": {
       "disabled": false,
@@ -225,13 +221,7 @@
       "disabled": true,
       "address": "localhost:50077",
       "createOnSubmit": true,
-      "cleanupPostSubmit": true,
-      "users": {
-        "tech_user": {
-          "id": "tech_user",
-          "token": "123099ffc93b44f6b4a81b1e5589b642"
-        }
-      }
+      "cleanupPostSubmit": true
     }
   },
   "server": {
@@ -336,20 +326,6 @@
     "LIMIT_EXHAUSTED": {
       "code": 500,
       "message": "Query limit 1000 for {entity} exhausted!"
-    }
-  },
-  "errors": {
-    "INVALID_CREDENTIALS": {
-      "code": 401,
-      "message": "Invalid credentials"
-    },
-    "USER_NOT_LOGGED_IN": {
-      "code": 401,
-      "message": "Invalid authentication context, please log in first"
-    },
-    "ACTION_NOT_ALLOWED": {
-      "code": 403,
-      "message": "Action not allowed on this resource"
     }
   },
   "preDefinedIds": {
