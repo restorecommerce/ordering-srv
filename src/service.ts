@@ -1150,22 +1150,23 @@ export class OrderingService
           country => country.payload
         );
         const organization = organization_map[
-          customer.payload?.commercial?.organization_id
-          ?? customer.payload?.public_sector?.organization_id
+          customer?.payload?.commercial?.organization_id
+          ?? customer?.payload?.public_sector?.organization_id
         ];
 
-        if (customer.payload?.private) {
+        if (customer?.payload?.private) {
           order.customer_type ??= CustomerType.PRIVATE;
-          order.user_id ??= customer?.payload?.private?.user_id;
+          order.user_id ??= customer.payload?.private?.user_id;
         }
-        else if (customer.payload?.commercial) {
+        else if (customer?.payload?.commercial) {
           order.customer_type ??= CustomerType.COMMERCIAL;
           order.customer_vat_id ??= organization?.payload?.vat_id;
         }
-        else if (customer.payload?.public_sector) {
+        else if (customer?.payload?.public_sector) {
           order.customer_type ??= CustomerType.PUBLIC_SECTOR;
           order.customer_vat_id ??= organization?.payload?.vat_id;
         }
+        order.user_id = subject.id;
 
         if (order.items?.length) {
           await Promise.all(order.items?.map(
@@ -1197,7 +1198,7 @@ export class OrderingService
               const vats = taxes.filter(
                 t => (
                   t.country_id === country?.id &&
-                  !!customer?.payload!.private?.user_id &&
+                  order.customer_type === CustomerType.PRIVATE &&
                   country?.economic_areas?.some(
                     ea => billing_country?.payload?.economic_areas?.includes(ea)
                   ) &&
@@ -1748,7 +1749,7 @@ export class OrderingService
 
       return response;
     }
-    catch (e) {
+    catch (e: any) {
       return this.catchOperationError(e);
     }
   }

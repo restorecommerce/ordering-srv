@@ -338,8 +338,6 @@ const validOrders: { [key: string]: OrderList } = {
             quantity: 4,
           }
         ],
-        orderState: OrderState.PENDING,
-        totalAmounts: [],
         notificationEmail: 'user@test.spec',
         packagingPreferences: {
           couriers: [{
