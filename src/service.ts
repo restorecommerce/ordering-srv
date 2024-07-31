@@ -908,11 +908,11 @@ export class OrderingService
         if (response.operation_status?.code !== 200) {
           throw response.operation_status;
         }
-        else if (response.items?.length !== ids.length) {
+        else if (response.items?.length < ids.length) {
           throw this.createOperationStatusCode(
             this.operation_status_codes.ITEMS_MISSING,
             entity,
-            ids.join(', '),
+            `[${ids.join(', ')}]`,
           );
         }
         else {

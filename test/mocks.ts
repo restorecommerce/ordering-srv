@@ -278,7 +278,7 @@ const contactPoints = [
       description: 'A mocked Contact Point for testing',
       email: 'info@shop.com',
       localeId: 'localization_1',
-      physicalAddressId: businessAddresses[0].address?.id,
+      physicalAddressId: businessAddresses[0].address!.id,
       telephone: '0123456789',
       timezoneId: 'timezone_1',
       website: 'www.shop.com',
@@ -731,7 +731,7 @@ export const rules = {
             private: {
               userId: 'user_1',
               contactPointIds: [
-                'cantactPoint_1'
+                'contactPoint_1'
               ],
             },
           },
