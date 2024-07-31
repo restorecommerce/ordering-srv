@@ -208,13 +208,13 @@
       "address": "localhost:50053"
     },
     "fulfillment": {
-      "disabled": false,
+      "disabled": true,
       "address": "localhost:50067",
       "createOnSubmit": true,
       "cleanupPostSubmit": true
     },
     "fulfillment_product": {
-      "disabled": false,
+      "disabled": true,
       "address": "localhost:50067"
     },
     "invoice": {

@@ -65,15 +65,12 @@
       "address": "resource-srv:50051"
     },
     "fulfillment": {
-      "disabled": false,
       "address": "fulfillment-srv:50051"
     },
     "fulfillment_product": {
-      "disabled": false,
       "address": "fulfillment-srv:50051"
     },
     "invoice": {
-      "disabled": true,
       "address": "invoice-srv:50051"
     }
   },

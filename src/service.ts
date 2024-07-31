@@ -257,6 +257,10 @@ export class OrderingService
       code: 404,
       message: '{entity} not found!',
     },
+    ITEMS_MISSING: {
+      code: 404,
+      message: 'Some {entity} are missing in: {id}!',
+    },
   };
 
   protected readonly emitters: any;
@@ -498,13 +502,16 @@ export class OrderingService
   }
 
   private createOperationStatusCode(
-    entity: string,
-    status: OperationStatus,
+    status?: OperationStatus,
+    entity?: string,
+    id?: string,
   ): OperationStatus {
     return {
       code: status?.code ?? 500,
       message: status?.message?.replace(
-        '{entity}', entity
+        '{entity}', entity ?? 'undefined'
+      ).replace(
+        '{id}', id ?? 'undefined'
       ) ?? 'Unknown status',
     };
   }
@@ -531,8 +538,8 @@ export class OrderingService
 
     if (order_ids.length > 1000) {
       throw this.createOperationStatusCode(
-        this.name,
         this.operation_status_codes.LIMIT_EXHAUSTED,
+        this.name,
       );
     }
 
@@ -671,14 +678,14 @@ export class OrderingService
 
     if (!product_ids.length) {
       throw this.createOperationStatusCode(
-        'product',
         this.operation_status_codes.NO_ITEM,
+        'products',
       );
     }
     else if (product_ids.length > 1000) {
       throw this.createOperationStatusCode(
-        'product',
         this.operation_status_codes.LIMIT_EXHAUSTED,
+        'products',
       );
     }
 
@@ -706,8 +713,8 @@ export class OrderingService
         }
         else if (!response.items?.length) {
           throw this.createOperationStatusCode(
-            'products',
             this.operation_status_codes.ITEM_NOT_FOUND,
+            'products',
           );
         }
         else {
@@ -783,8 +790,8 @@ export class OrderingService
         }
         else if (!response.items?.length) {
           throw this.createOperationStatusCode(
-            'taxes',
             this.operation_status_codes.ITEM_NOT_FOUND,
+            'taxes',
           );
         }
         else {
@@ -810,8 +817,8 @@ export class OrderingService
 
     if (order_ids.length > 1000) {
       throw this.createOperationStatusCode(
-        'fulfillment',
         this.operation_status_codes.LIMIT_EXHAUSTED,
+        'fulfillment',
       );
     }
 
@@ -861,17 +868,23 @@ export class OrderingService
   private async get<T>(
     ids: (string | undefined)[],
     service: CRUDClient,
+    entity: string,
     subject?: Subject,
     context?: any,
   ): Promise<T> {
-    ids = [...new Set<string | undefined>(ids)];
-    const entity = typeof ({} as T);
+    ids = [...new Set<string | undefined>(ids?.filter(
+      id => id
+    ))];
 
-    if (ids.length > 1000) {
+    if (ids?.length > 1000) {
       throw this.createOperationStatusCode(
-        entity,
         this.operation_status_codes.LIMIT_EXHAUSTED,
+        entity,
       );
+    }
+
+    if (!(ids?.length > 0)) {
+      return {} as T;
     }
 
     return await service.read(
@@ -895,10 +908,11 @@ export class OrderingService
         if (response.operation_status?.code !== 200) {
           throw response.operation_status;
         }
-        else if (!response.items?.length) {
+        else if (response.items?.length !== ids.length) {
           throw this.createOperationStatusCode(
+            this.operation_status_codes.ITEMS_MISSING,
             entity,
-            this.operation_status_codes.ITEM_NOT_FOUND,
+            ids.join(', '),
           );
         }
         else {
@@ -953,8 +967,8 @@ export class OrderingService
     if (!order_list?.items?.length) {
       return {
         operation_status: this.createOperationStatusCode(
-          'order',
           this.operation_status_codes.NO_ITEM,
+          'order',
         )
       };
     }
@@ -972,32 +986,51 @@ export class OrderingService
     const customer_map = await this.get<CustomerMap>(
       order_list.items?.map(item => item.customer_id) ?? [],
       this.customer_service,
+      'customers',
       subject,
       context,
     );
     const shop_map = await this.get<ShopMap>(
       order_list.items?.map(item => item.shop_id) ?? [],
       this.shop_service,
+      'shops',
       subject,
       context,
     );
     const organization_map = await this.get<OrganizationMap>(
-      Object.values(
-        shop_map
-      ).map(
-        item => item.payload?.organization_id
-      ),
+      [
+        ...Object.values(
+          shop_map
+        ).map(
+          item => item.payload?.organization_id
+        ),
+        ...Object.values(
+          customer_map
+        ).map(
+          item => item.payload?.commercial?.organization_id
+            ?? item.payload?.public_sector?.organization_id
+        )
+      ],
       this.organization_service,
+      'organizations',
       subject,
       context,
     );
     const contact_point_map = await this.get<ContactPointMap>(
-      Object.values(
-        organization_map
-      ).flatMap(
-        item => item.payload?.contact_point_ids
-      ),
+      [
+        ...Object.values(
+          organization_map
+        ).flatMap(
+          item => item.payload?.contact_point_ids
+        ),
+        ...Object.values(
+          customer_map
+        ).flatMap(
+          item => item.payload?.private?.contact_point_ids
+        ),
+      ],
       this.contact_point_service,
+      'contact_points',
       subject,
       context,
     );
@@ -1008,6 +1041,7 @@ export class OrderingService
         item => item.payload?.physical_address_id
       ),
       this.address_service,
+      'addresses',
       subject,
       context,
     );
@@ -1025,6 +1059,7 @@ export class OrderingService
         )
       ],
       this.country_service,
+      'countries',
       subject,
       context,
     );
@@ -1290,11 +1325,11 @@ export class OrderingService
     const operation_status = items.some(
       a => a.status?.code !== 200
     ) ? this.createOperationStatusCode(
+        this.operation_status_codes.PARTIAL,
         'order',
-        this.operation_status_codes.PARTIAL
       ) : this.createOperationStatusCode(
+        this.operation_status_codes.SUCCESS,
         'order',
-        this.operation_status_codes.SUCCESS
       );
 
     return {
@@ -1522,8 +1557,8 @@ export class OrderingService
           response => {
             if (response.items?.length) {
               throw this.createOperationStatusCode(
+                this.operation_status_codes.CONFLICT,
                 'order',
-                this.operation_status_codes.CONFLICT
               );
             }
           }
@@ -2092,8 +2127,8 @@ export class OrderingService
         total_count: response.items?.length! + invalids.length,
         operation_status: invalids.length
           ? this.createOperationStatusCode(
+            this.operation_status_codes.PARTIAL,
             'fulfillment',
-            this.operation_status_codes.PARTIAL
           )
           : response.operation_status,
       };
@@ -2411,8 +2446,8 @@ export class OrderingService
         total_count: response.items?.length! + invalids.length,
         operation_status: invalids.length
           ? this.createOperationStatusCode(
-            'Invoice',
             this.operation_status_codes.PARTIAL,
+            'Invoice',
           )
           : response.operation_status,
       };
