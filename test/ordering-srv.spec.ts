@@ -95,7 +95,7 @@ describe('The Ordering Service:', () => {
       should.equal(
         response.operationStatus?.code,
         200,
-        '\n' + JSON.stringify(response.operationStatus, null, 2),
+        '\n' + JSON.stringify(response, null, 2),
       );
       should.ok(
         !response.items?.some(item => item.status?.code !== 200),
@@ -116,7 +116,7 @@ describe('The Ordering Service:', () => {
       should.equal(
         response.operationStatus?.code,
         200,
-        '\n' + JSON.stringify(response.operationStatus, null, 2),
+        '\n' + JSON.stringify(response, null, 2),
       );
       should.ok(
         !response.items?.some(item => item.status?.code !== 200),
@@ -148,7 +148,7 @@ describe('The Ordering Service:', () => {
       should.equal(
         response.operationStatus?.code,
         200,
-        '\n' + JSON.stringify(response.operationStatus, null, 2),
+        '\n' + JSON.stringify(response, null, 2),
       );
       should.ok(
         !response.orders?.some(item => item.status?.code !== 200),
@@ -169,7 +169,7 @@ describe('The Ordering Service:', () => {
       should.notEqual(
         response.operationStatus?.code,
         200,
-        '\n' + JSON.stringify(response.operationStatus, null, 2),
+        '\n' + JSON.stringify(response, null, 2),
       );
       should.ok(
         !response.orders?.some(item => item.status?.code === 200),
@@ -193,7 +193,7 @@ describe('The Ordering Service:', () => {
       should.equal(
         response.operationStatus?.code,
         200,
-        '\n' + JSON.stringify(response.operationStatus, null, 2),
+        '\n' + JSON.stringify(response, null, 2),
       );
       should.ok(
         !response.items?.some(item => item.status?.code !== 200),
@@ -212,7 +212,7 @@ describe('The Ordering Service:', () => {
       should.equal(
         response.operationStatus?.code,
         200,
-        '\n' + JSON.stringify(response.operationStatus, null, 2),
+        '\n' + JSON.stringify(response, null, 2),
       );
       should.ok(
         !response.items?.some(item => item.status?.code !== 200),
@@ -231,7 +231,7 @@ describe('The Ordering Service:', () => {
       should.equal(
         response.operationStatus?.code,
         200,
-        '\n' + JSON.stringify(response.operationStatus, null, 2),
+        '\n' + JSON.stringify(response, null, 2),
       );
       should.ok(
         !response.items?.some(item => item.status?.code !== 200),
@@ -250,7 +250,7 @@ describe('The Ordering Service:', () => {
       should.equal(
         response.operationStatus?.code,
         200,
-        '\n' + JSON.stringify(response.operationStatus, null, 2),
+        '\n' + JSON.stringify(response, null, 2),
       );
       should.ok(
         !response?.status?.some(status => status?.code !== 200),

@@ -189,7 +189,41 @@ export class OrderingService
     };
   }
 
-  private readonly status_codes: { [key: string]: Status } = {
+  private readonly urns = {
+    instanceType: 'urn:restorecommerce:acs:model:order:Order',
+    disableFulfillment: 'urn:restorecommerce:order:preferences:disableFulfillment',
+    disableInvoice: 'urn:restorecommerce:order:preferences:disableInvoice',
+    entity: 'urn:restorecommerce:acs:names:model:entity',
+    user: 'urn:restorecommerce:acs:model:user.User',
+    model: 'urn:restorecommerce:acs:model',
+    role: 'urn:restorecommerce:acs:names:role',
+    roleScopingEntity: 'urn:restorecommerce:acs:names:roleScopingEntity',
+    roleScopingInstance: 'urn:restorecommerce:acs:names:roleScopingInstance',
+    unauthenticated_user: 'urn:restorecommerce:acs:names:unauthenticated-user',
+    property: 'urn:restorecommerce:acs:names:model:property',
+    ownerIndicatoryEntity: 'urn:restorecommerce:acs:names:ownerIndicatoryEntity',
+    ownerInstance: 'urn:restorecommerce:acs:names:ownerInstance',
+    orgScope: 'urn:restorecommerce:acs:model:organization.Organization',
+    subjectID: 'urn:oasis:names:tc:xacml:1.0:subject:subject-id',
+    resourceID: 'urn:oasis:names:tc:xacml:1.0:resource:resource-id',
+    actionID: 'urn:oasis:names:tc:xacml:1.0:action:action-id',
+    action: 'urn:restorecommerce:acs:names:action',
+    operation: 'urn:restorecommerce:acs:names:operation',
+    execute: 'urn:restorecommerce:acs:names:action:execute',
+    permitOverrides: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
+    denyOverrides: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:deny-overrides',
+    create: 'urn:restorecommerce:acs:names:action:create',
+    read: 'urn:restorecommerce:acs:names:action:read',
+    modify: 'urn:restorecommerce:acs:names:action:modify',
+    delete: 'urn:restorecommerce:acs:names:action:delete',
+    organization: 'urn:restorecommerce:acs:model:organization.Organization',
+    aclIndicatoryEntity: 'urn:restorecommerce:acs:names:aclIndicatoryEntity',
+    aclInstance: 'urn:restorecommerce:acs:names:aclInstance',
+    skipACL: 'urn:restorecommerce:acs:names:skipACL',
+    maskedProperty: 'urn:restorecommerce:acs:names:obligation:maskedProperty',
+  };
+
+  private readonly status_codes = {
     OK: {
       id: '',
       code: 200,
@@ -232,7 +266,7 @@ export class OrderingService
     },
   };
 
-  private readonly operation_status_codes: { [key: string]: OperationStatus } = {
+  private readonly operation_status_codes = {
     SUCCESS: {
       code: 200,
       message: 'SUCCESS',
@@ -265,7 +299,6 @@ export class OrderingService
 
   protected readonly emitters: any;
   protected readonly legal_address_type_id: string;
-  protected readonly unauthenticated_user: Subject;
   protected readonly fulfillment_tech_user?: Subject;
   protected readonly invoice_tech_user?: Subject;
   protected readonly product_service: Client<ProductServiceDefinition>;
@@ -283,9 +316,6 @@ export class OrderingService
   protected readonly creates_invoices_on_submit?: boolean;
   protected readonly cleanup_fulfillments_post_submit?: boolean;
   protected readonly cleanup_invoices_post_submit?: boolean;
-  protected readonly urn_instance_type: string;
-  protected readonly urn_disable_fulfillment: string;
-  protected readonly urn_disable_invoice: string;
 
   get ApiKey(): Subject {
     const apiKey = this.cfg.get('authentication:apiKey');
@@ -306,7 +336,7 @@ export class OrderingService
   }
 
   get instanceType() {
-    return this.urn_instance_type;
+    return this.urns.instanceType;
   }
 
   constructor(
@@ -330,6 +360,12 @@ export class OrderingService
       !!cfg.get('events:enableEvents')
     );
 
+    this.urns = {
+      ...this.urns,
+      ...cfg.get('urns'),
+      ...cfg.get('authentication:urns'),
+    };
+
     this.status_codes = {
       ...this.status_codes,
       ...cfg.get('statusCodes'),
@@ -341,11 +377,7 @@ export class OrderingService
     };
 
     this.emitters = cfg.get('events:emitters');
-    this.urn_instance_type = cfg.get('urns:instanceType');
-    this.urn_disable_fulfillment = cfg.get('urns:disableFulfillment');
-    this.urn_disable_invoice = cfg.get('urns:disableInvoice');
     this.legal_address_type_id = cfg.get('preDefinedIds:legalAddressTypeId') ?? 'legal_address';
-    this.unauthenticated_user = cfg.get('authentication:users:unauthenticated_user');
 
     this.product_service = createClient(
       {
@@ -1299,6 +1331,60 @@ export class OrderingService
           }
         );
 
+        const has_shop_as_owner = order.meta?.owners?.filter(
+          owner => owner.id === this.urns.ownerIndicatoryEntity
+            && owner.value === this.urns.organization
+        ).some(
+          owner => owner.attributes?.some(
+            a => a.id === this.urns.ownerInstance
+              && a.value === shop.payload.organization_id
+          )
+        );
+
+        const customer_entity = (
+          customer.payload?.private
+            ? this.urns.user
+            : this.urns.organization
+        );
+        const customer_instance = (
+          customer.payload?.private?.user_id
+            ?? customer.payload?.commercial?.organization_id
+            ?? customer.payload?.public_sector?.organization_id
+        );
+        const has_customer_as_owner = order.meta?.owners?.filter(
+          owner => owner.id === this.urns.ownerIndicatoryEntity
+            && owner.value === customer_entity
+        ).some(
+          owner => owner.attributes?.some(
+            a => a.id === this.urns.ownerInstance
+              && a.value === customer_instance
+          )
+        );
+
+        order.meta.owners = [
+          ...order.meta?.owners,
+          !has_shop_as_owner && {
+            id: this.urns.ownerIndicatoryEntity,
+            value: this.urns.organization,
+            attributes: [
+              {
+                id: this.urns.ownerInstance,
+                value: shop.payload.organization_id
+              }
+            ]
+          },
+          !has_customer_as_owner && {
+            id: this.urns.ownerIndicatoryEntity,
+            value: customer_entity,
+            attributes: [
+              {
+                id: this.urns.ownerInstance,
+                value: customer_instance
+              }
+            ]
+          }
+        ];
+
         return {
           payload: order,
           status: this.createStatusCode(
@@ -1344,7 +1430,7 @@ export class OrderingService
     state: OrderState,
     subject?: Subject,
     context?: any
-  ): Promise<DeepPartial<OrderListResponse>> {
+  ): Promise<OrderListResponse> {
     try {
       const responseMap = await this.getOrderMap(
         ids,
@@ -1489,6 +1575,7 @@ export class OrderingService
   @resolves_subject(
     DefaultSubjectResolver
   )
+  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -1530,40 +1617,40 @@ export class OrderingService
     context?: any
   ): Promise<OrderSubmitListResponse> {
     try {
-      const unauthenticated = request.subject?.unauthenticated
-        || !request.subject?.id?.length
-        || request.subject?.id === this.unauthenticated_user?.id;
-
-      if(unauthenticated) {
-        await super.read(
-          {
-            filters: [
-              {
-                filters: [
-                  {
-                    field: 'id',
-                    operation: Filter_Operation.in,
-                    value: JSON.stringify(request.items?.map(item => item.id)),
-                    type: Filter_ValueType.ARRAY,
-                  }
-                ],
-                operator: FilterOp_Operator.and,
-              }
-            ],
-            limit: 1,
-          },
-          context,
-        ).then(
-          response => {
-            if (response.items?.length) {
-              throw this.createOperationStatusCode(
-                this.operation_status_codes.CONFLICT,
-                'order',
-              );
+      await super.read(
+        {
+          filters: [
+            {
+              filters: [
+                {
+                  field: 'id',
+                  operation: Filter_Operation.in,
+                  value: JSON.stringify(request.items?.map(item => item.id)),
+                  type: Filter_ValueType.ARRAY,
+                },
+                {
+                  field: 'order_state',
+                  operation: Filter_Operation.neq,
+                  value: OrderState.PENDING,
+                  type: Filter_ValueType.STRING,
+                },
+              ],
+              operator: FilterOp_Operator.and,
             }
+          ],
+          limit: 1,
+        },
+        context,
+      ).then(
+        response => {
+          if (response.items?.length) {
+            throw this.createOperationStatusCode(
+              this.operation_status_codes.CONFLICT,
+              'order',
+            );
           }
-        );
-      }
+        }
+      );
 
       const responseMap = request.items?.reduce(
         (a, b) => {
@@ -1588,7 +1675,7 @@ export class OrderingService
             }
           ).map(
             item => {
-              item.payload!.order_state = OrderState.SUBMITTED;
+              item.payload!.order_state = OrderState.PENDING;
               return item.payload as Order;
             }
           ),
@@ -1618,10 +1705,7 @@ export class OrderingService
         }
       );
 
-      const response: OrderSubmitListResponse = {
-        orders: orders.items,
-        operation_status: orders.operation_status,
-      };
+      const response: OrderSubmitListResponse = {};
 
       if (this.creates_fulfillments_on_submit) {
         response.fulfillments = await this.createFulfillment(
@@ -1629,7 +1713,7 @@ export class OrderingService
             items: orders.items?.filter(
               order => order.status?.code === 200
                 || order.payload?.packaging_preferences?.options?.find(
-                  att => att.id === this.urn_disable_fulfillment
+                  att => att.id === this.urns.disableFulfillment
                 )?.value === 'true'
             ).map(
               order => ({
@@ -1640,31 +1724,28 @@ export class OrderingService
           },
           context,
         ).then(
-          response => {
-            if (response.operation_status?.code! < 300) {
-              return response.items;
-            }
-            else {
-              throw response.operation_status;
-            }
+          r => {
+            r.items?.forEach(
+              fulfillment => {
+                fulfillment.payload?.references?.forEach(
+                  reference => {
+                    const order = responseMap[reference.instance_id!];
+                    if (fulfillment.status?.code !== 200 && order) {
+                      order.status = {
+                        ...fulfillment.status,
+                        id: order.payload?.id ?? order.status?.id,
+                      };
+                    }
+                  }
+                );
+              }
+            );
+            response.operation_status = operation_status;
+            return r.items;
           }
         );
 
-        response.fulfillments!.forEach(
-          fulfillment => {
-            fulfillment.payload?.references?.forEach(
-              reference => {
-                const order = responseMap[reference.instance_id!];
-                if (fulfillment.status?.code !== 200 && order) {
-                  order.status = {
-                    ...fulfillment.status,
-                    id: order.payload?.id ?? order.status?.id,
-                  };
-                }
-              }
-            );
-          }
-        );
+        response.fulfillments!;
       }
 
       if (this.creates_invoices_on_submit) {
@@ -1673,7 +1754,7 @@ export class OrderingService
             items: orders.items?.filter(
               order => order.status?.code === 200
                 || order.payload?.packaging_preferences?.options?.find(
-                  att => att.id === this.urn_disable_invoice
+                  att => att.id === this.urns.disableInvoice
                 )?.value === 'true'
             ).map(
               order => ({
@@ -1689,29 +1770,25 @@ export class OrderingService
           },
           context,
         ).then(
-          response => {
-            if (response.operation_status?.code! < 300) {
-              return response.items;
-            }
-            else {
-              throw response.operation_status;
-            }
-          }
-        );
-
-        response.invoices?.forEach(
-          invoice => {
-            invoice.payload?.references?.forEach(
-              reference => {
-                const order = responseMap[reference.instance_id!];
-                if (invoice.status?.code !== 200 && order) {
-                  order.status = {
-                    ...invoice.status,
-                    id: order.payload?.id ?? order.status?.id,
-                  };
-                }
+          r => {
+            r.items?.forEach(
+              invoice => {
+                invoice.payload?.references?.forEach(
+                  reference => {
+                    const order = responseMap[reference.instance_id!];
+                    if (invoice.status?.code !== 200 && order) {
+                      order.status = {
+                        ...invoice.status,
+                        id: order.payload?.id ?? order.status?.id,
+                      };
+                    }
+                  }
+                );
               }
             );
+
+            response.operation_status = operation_status;
+            return r.items;
           }
         );
       }
@@ -1762,14 +1839,27 @@ export class OrderingService
         }
       }
 
-      if (unauthenticated && failed_order_ids.length) {
-        await super.delete(
-          {
-            ids: failed_order_ids
-          },
-          context,
-        );
-      }
+      const submits = Object.values(responseMap).filter(
+        order => order.status?.code === 200
+      ).map(
+        order => ({
+          ...order.payload,
+          order_state: OrderState.SUBMITTED,
+        })
+      );
+
+      await super.update(
+        OrderList.fromPartial({
+          items: submits,
+          total_count: submits.length,
+          subject: request.subject,
+        }),
+        context,
+      ).then(
+        r => r.items?.forEach(
+          item => responseMap[item.payload?.id ?? item.status?.id] = item
+        )
+      );
 
       Object.values(responseMap).forEach(
         item => {
@@ -1782,6 +1872,8 @@ export class OrderingService
         }
       );
 
+      // ensure input order is output order!
+      response.orders = request.items.map(item => responseMap[item.id]);
       return response;
     }
     catch (e: any) {
