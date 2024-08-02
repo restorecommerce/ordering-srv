@@ -1361,29 +1361,35 @@ export class OrderingService
           )
         );
 
-        order.meta.owners = [
-          ...order.meta?.owners,
-          !has_shop_as_owner && {
-            id: this.urns.ownerIndicatoryEntity,
-            value: this.urns.organization,
-            attributes: [
-              {
-                id: this.urns.ownerInstance,
-                value: shop.payload.organization_id
-              }
-            ]
-          },
-          !has_customer_as_owner && {
-            id: this.urns.ownerIndicatoryEntity,
-            value: customer_entity,
-            attributes: [
-              {
-                id: this.urns.ownerInstance,
-                value: customer_instance
-              }
-            ]
-          }
-        ];
+        if (!has_shop_as_owner ) {
+          order.meta.owners.push(
+            {
+              id: this.urns.ownerIndicatoryEntity,
+              value: this.urns.organization,
+              attributes: [
+                {
+                  id: this.urns.ownerInstance,
+                  value: shop.payload.organization_id
+                }
+              ]
+            }
+          );
+        }
+
+        if (!has_customer_as_owner ) {
+          order.meta.owners.push(
+            {
+              id: this.urns.ownerIndicatoryEntity,
+              value: customer_entity,
+              attributes: [
+                {
+                  id: this.urns.ownerInstance,
+                  value: customer_instance
+                }
+              ]
+            }
+          );
+        };
 
         return {
           payload: order,
