@@ -6,6 +6,7 @@ import { createClient, createChannel, GrpcClientConfig } from '@restorecommerce/
 import { Events, Topic } from '@restorecommerce/kafka-client';
 import {
   FulfillmentRequest,
+  FulfillmentRequestList,
   Order,
   OrderServiceDefinition,
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order.js';
@@ -13,6 +14,9 @@ import {
   Order as Order_,
   OrderState as Order_State,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order.js';
+import { 
+  Filter_Operation
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/filter.js';
 import { GrpcMockServer } from '@alenon/grpc-mock-server';
 import { Worker } from '../src/worker.js';
 import {
@@ -24,6 +28,7 @@ import {
   connectTopics,
   mockServices,
 } from './utils.js';
+import { Filter_ValueType } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/filter.js';
 
 describe('The Ordering Service:', () => {
   let mocking: GrpcMockServer[];
@@ -32,11 +37,17 @@ describe('The Ordering Service:', () => {
   let topics: Topic;
   let client: Client<OrderServiceDefinition>;
   const orderCreatedSemaphore = new Semaphore(0);
+  const orderUpdatedSemaphore = new Semaphore(0);
   const orderSubmittedSemaphore = new Semaphore(0);
 
   const onOrderCreated = (msg: Order_, context?:any): void => {
     should.equal(msg?.order_state, Order_State.PENDING);
     orderCreatedSemaphore.release(1);
+  };
+
+  const onOrderUpdated = (msg: Order_, context?:any): void => {
+    //should.equal(msg?.order_state, Order_State.PENDING);
+    orderUpdatedSemaphore.release(1);
   };
 
   const onOrderSubmitted = (msg: Order_, context?:any): void => {
@@ -60,7 +71,15 @@ describe('The Ordering Service:', () => {
     ) as Client<OrderServiceDefinition>;
 
     await Promise.all([
+      client?.delete({
+        collection: true,
+        subject: {
+          id: 'superadmin',
+          token: 'superadmin',
+        }
+      }),
       topics?.on('orderCreated', onOrderCreated),
+      topics?.on('orderModified', onOrderUpdated),
       topics?.on('orderSubmitted', onOrderSubmitted),
     ]);
     await topics?.consumer?.run();
@@ -77,6 +96,7 @@ describe('The Ordering Service:', () => {
         }
       }),
       topics?.removeListener('orderCreated', onOrderCreated),
+      topics?.removeListener('orderUpdated', onOrderUpdated),
       topics?.removeListener('orderSubmitted', onOrderSubmitted),
     ]).finally(
       () => Promise.allSettled([
@@ -106,6 +126,66 @@ describe('The Ordering Service:', () => {
     it('should have received an order create event', async function() {
       this.timeout(5000);
       await orderCreatedSemaphore.acquire(1);
+    })
+  }
+
+  for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
+    it(`should read valid orders by sample: ${sample_name}`, async function() {
+      this.timeout(5000);
+      const ids = [...new Set(
+          sample.items?.map(
+            item => item.id
+          )
+        )
+      ];
+      const response = await client.read(
+        {
+          filters: [{
+            filters: [{
+              field: 'id',
+              value: JSON.stringify(ids),
+              operation: Filter_Operation.in,
+              type: Filter_ValueType.ARRAY,
+            }],
+          }],
+          limit: ids.length,
+          subject: sample.subject
+        }
+      );
+      should.equal(
+        response.operationStatus?.code,
+        200,
+        '\n' + JSON.stringify(response, null, 2),
+      );
+      should.equal(
+        response.totalCount,
+        ids.length
+      )
+      should.ok(
+        !response.items?.some(item => item.status?.code !== 200),
+        'response.items[*].status.code expected all to be 200',
+      );
+    });
+  }
+
+  for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
+    it(`should update valid orders by sample: ${sample_name}`, async function() {
+      this.timeout(5000);
+      const response = await client.update(sample);
+      should.equal(
+        response.operationStatus?.code,
+        200,
+        '\n' + JSON.stringify(response, null, 2),
+      );
+      should.ok(
+        !response.items?.some(item => item.status?.code !== 200),
+        'response.items[*].status.code expected all to be 200',
+      );
+    });
+
+    it('should have received an order update event', async function() {
+      this.timeout(5000);
+      await orderUpdatedSemaphore.acquire(1);
     })
   }
 
@@ -181,15 +261,16 @@ describe('The Ordering Service:', () => {
   for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
     it(`should create a fulfillment request: ${sample_name}`, async function() {
       this.timeout(5000);
-      const response = await client.createFulfillment({
-        items: sample.items?.map((order: Order): FulfillmentRequest => ({
+      const query: FulfillmentRequestList = {
+        items: sample.items?.map(order => ({
           orderId: order.id,
           selectedItems: [],
           senderAddress: samples.businessAddresses[0],
         })),
-        totalCount: 1,
+        totalCount: sample.items?.length,
         subject: sample.subject,
-      });
+      };
+      const response = await client.createFulfillment(query);
       should.equal(
         response.operationStatus?.code,
         200,

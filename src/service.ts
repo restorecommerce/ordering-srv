@@ -1,5 +1,6 @@
-import nconf from 'nconf';
-import { Logger } from 'winston';
+import * as uuid from 'uuid';
+import { Logger } from '@restorecommerce/logger';
+import { ServiceConfig } from '@restorecommerce/service-config';
 import {
   database
 } from '@restorecommerce/chassis-srv';
@@ -15,7 +16,7 @@ import {
   DefaultACSClientContextFactory,
   Operation,
   DefaultResourceFactory,
-  DefaultMetaDataInjector,
+  // DefaultMetaDataInjector,
   access_controlled_function,
   access_controlled_service,
   injects_meta_data,
@@ -29,7 +30,6 @@ import { Topic } from '@restorecommerce/kafka-client';
 import {
   OrderList,
   OrderResponse,
-  DeepPartial,
   FulfillmentRequestList,
   Order,
   OrderState,
@@ -39,6 +39,8 @@ import {
   OrderingInvoiceRequestList,
   FulfillmentInvoiceMode,
   OrderSubmitListResponse,
+  FulfillmentRequest,
+  OrderingInvoiceRequest,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order.js';
 import {
   PhysicalProduct,
@@ -125,14 +127,83 @@ export const DefaultSubjectResolver = async <T extends ResourceList>(
   request: T,
   ...args: any
 ): Promise<T> => {
-  const subject = request.subject;
-  subject.id = undefined;
+  const subject = request?.subject;
+  if (subject?.id) {
+    delete subject.id;
+  }
   if (subject?.token) {
     const user = await self.__userService.findByToken({ token: subject.token });
     if (user?.payload?.id) {
       subject.id = user.payload.id;
     }
   }
+  return request;
+};
+
+export const DefaultMetaDataInjector = async <T extends ResourceList>(
+  self: OrderingService,
+  request: T,
+  ...args: any
+): Promise<T> => {
+  const urns = self.cfg.get('authorization:urns');
+  const ids = [...new Set(
+    request.items?.map(
+      (item) => item.id
+    ).filter(
+      id => id
+    )
+  )
+  ];
+  const meta_map = await self.read({
+    filters: [{
+      filters: [{
+        field: 'id',
+        operation: Filter_Operation.in,
+        value: JSON.stringify(ids),
+        type: Filter_ValueType.ARRAY,
+        filters: [],
+      }]
+    }],
+    limit: ids.length,
+    subject: request.subject
+  }).then(
+    (response: OrderListResponse) => new Map(response.items?.filter(
+      item => item.payload
+    ).map(
+      item => [item.payload.id, item.payload.meta]
+    ))
+  );
+
+  request.items?.forEach((item) => {
+    if (!item.id?.length) {
+      item.id = uuid.v4().replace(/-/g, '');
+    }
+
+    if (!item.meta?.owners?.length) {
+      item.meta = {
+        ...meta_map.get(item.id),
+        ...item.meta,
+        owners: [
+          request.subject?.scope ? {
+            id: urns.ownerIndicatoryEntity,
+            value: urns.organization, // to be passed here to change
+            attributes: [{
+              id: urns.ownerInstance,
+              value: request.subject.scope
+            }],
+          } : undefined,
+          request.subject?.id ? {
+            id: urns.ownerIndicatoryEntity,
+            value: urns.user,
+            attributes: [{
+              id: urns.ownerInstance,
+              value: request.subject.id
+            }],
+          } : undefined,
+        ].filter(i => !!i)
+      };
+    }
+  });
   return request;
 };
 
@@ -177,7 +248,9 @@ export class OrderingService
     request: OrderList & OrderIdList & FulfillmentRequestList & OrderingInvoiceRequestList,
     context: any,
   ): Promise<ACSClientContext> {
-    const ids = request.ids ?? request.items?.map(item => item.id!) ?? [] as string[];
+    const ids = request.ids ?? request.items?.map(
+      (item: Order & FulfillmentRequest & OrderingInvoiceRequest) => item.id ?? item.order_id
+    ) ?? [] as string[];
     const resources = await self.getOrdersById(ids, request?.subject!, context);
     return {
       ...context,
@@ -252,7 +325,7 @@ export class OrderingService
     NO_ITEM: {
       id: '',
       code: 400,
-      message: '{entity} {id} has no item in cart',
+      message: '{entity} {id} has no item in query',
     },
     NO_PHYSICAL_ITEM: {
       id: '',
@@ -285,7 +358,7 @@ export class OrderingService
     },
     NO_ITEM: {
       code: 400,
-      message: 'No item in cart!',
+      message: 'No item in query!',
     },
     ITEM_NOT_FOUND: {
       code: 404,
@@ -342,7 +415,7 @@ export class OrderingService
   constructor(
     protected readonly topic: Topic,
     protected readonly db: database.DatabaseProvider,
-    protected readonly cfg: nconf.Provider,
+    public readonly cfg: ServiceConfig,
     logger: Logger,
   ) {
     super(
@@ -359,6 +432,7 @@ export class OrderingService
       ),
       !!cfg.get('events:enableEvents')
     );
+    this.resourceapi.logger = logger;
 
     this.urns = {
       ...this.urns,
@@ -557,16 +631,25 @@ export class OrderingService
         message: e?.message ?? e?.details ?? (e ? JSON.stringify(e) : 'Unknown Error!'),
       }
     };
-    this.logger.error(error);
+    this.logger?.error(error);
     return error;
   }
 
-  private getOrdersById(
+  private async getOrdersById(
     ids: (string | undefined)[] | undefined,
     subject?: Subject,
     context?: any
   ): Promise<OrderListResponse> {
-    const order_ids = [...new Set(ids)];
+    const order_ids = [...new Set(ids)].filter(
+      ids => ids
+    );
+
+    if (order_ids.length === 0) {
+      throw this.createOperationStatusCode(
+        this.operation_status_codes.NO_ITEM,
+        this.name,
+      );
+    }
 
     if (order_ids.length > 1000) {
       throw this.createOperationStatusCode(
@@ -579,18 +662,17 @@ export class OrderingService
       {
         filters: [{
           filters: [{
-            field: 'id',
+            field: '_key',
             operation: Filter_Operation.in,
             value: JSON.stringify(order_ids),
             type: Filter_ValueType.ARRAY,
-            filters: [],
           }]
         }],
         limit: order_ids.length,
         subject,
       }
     );
-    return super.read(call, context);
+    return await super.read(call, context);
   }
 
   private getOrderMap(
@@ -1511,7 +1593,9 @@ export class OrderingService
   @resolves_subject(
     DefaultSubjectResolver
   )
-  @injects_meta_data()
+  @injects_meta_data(
+    DefaultMetaDataInjector
+  )
   @access_controlled_function({
     action: AuthZAction.CREATE,
     operation: Operation.isAllowed,
@@ -1537,6 +1621,9 @@ export class OrderingService
   @resolves_subject(
     DefaultSubjectResolver
   )
+  @injects_meta_data(
+    DefaultMetaDataInjector
+  )
   @access_controlled_function({
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
@@ -1555,7 +1642,9 @@ export class OrderingService
   @resolves_subject(
     DefaultSubjectResolver
   )
-  @injects_meta_data()
+  @injects_meta_data(
+    DefaultMetaDataInjector
+  )
   @access_controlled_function({
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
@@ -1568,20 +1657,15 @@ export class OrderingService
     request: OrderList,
     context?: any
   ) {
-    request?.items?.forEach(
-      item => {
-        if (!item.order_state || item.order_state === OrderState.UNRECOGNIZED) {
-          item.order_state = OrderState.PENDING;
-        }
-      }
-    );
     return super.upsert(request, context);
   }
 
   @resolves_subject(
     DefaultSubjectResolver
   )
-  @injects_meta_data()
+  @injects_meta_data(
+    DefaultMetaDataInjector
+  )
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -1606,10 +1690,6 @@ export class OrderingService
     }
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
-  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -1618,6 +1698,22 @@ export class OrderingService
     database: 'arangoDB',
     useCache: true,
   })
+  private upsertSubmit(
+    request: OrderList,
+    context?: any
+  ): Promise<OrderListResponse> {
+    return super.upsert(
+      request,
+      context,
+    );
+  }
+
+  @resolves_subject(
+    DefaultSubjectResolver
+  )
+  @injects_meta_data(
+    DefaultMetaDataInjector
+  )
   public async submit(
     request: OrderList,
     context?: any
@@ -1696,14 +1792,14 @@ export class OrderingService
         };
       }
 
-      const orders = await super.upsert(
+      const orders = await this.upsertSubmit(
         {
           items,
           total_count: items.length,
           subject: request.subject,
         },
         context,
-      ) as OrderListResponse;
+      );
 
       orders.items?.forEach(
         item => {
