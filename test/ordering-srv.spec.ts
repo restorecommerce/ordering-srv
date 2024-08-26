@@ -16,7 +16,7 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order.js';
 import { 
   Filter_Operation
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/filter.js';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/filter.js';
 import { GrpcMockServer } from '@alenon/grpc-mock-server';
 import { Worker } from '../src/worker.js';
 import {
