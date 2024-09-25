@@ -1372,8 +1372,10 @@ export class OrderingService
                   order.customer_type === CustomerType.PRIVATE &&
                   country?.economic_areas?.some(
                     ea => billing_country?.payload?.economic_areas?.includes(ea)
-                  ) &&
-                  (variant?.tax_ids?.length && variant.tax_ids?.includes(t.id!))
+                  ) && (
+                    product.payload.product.tax_ids?.includes(t.id!)
+                    || variant.tax_ids?.includes(t.id!)
+                  )
                 )
               ).map(
                 t => ({
@@ -1384,6 +1386,7 @@ export class OrderingService
               const net = vats.reduce((a, b) => b.vat! + a, gross);
               item.unit_price = unit_price;
               item.amount = {
+                currency_id: unit_price.currency_id,
                 gross,
                 net,
                 vats,
