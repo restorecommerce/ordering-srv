@@ -362,12 +362,8 @@ export class OrderingService
     },
     ITEM_NOT_FOUND: {
       code: 404,
-      message: '{entity} not found!',
-    },
-    ITEMS_MISSING: {
-      code: 404,
-      message: 'Some {entity} are missing in: {id}!',
-    },
+      message: '{entity} {id} not found!',
+    }
   };
 
   protected readonly emitters: any;
@@ -726,13 +722,24 @@ export class OrderingService
         limit: product_ids.length,
       }).then(
         response => {
-          if (response.operation_status?.code === 200) {
-            response.items?.forEach(
-              item => products[item.payload?.id!] = item
+          if (response.operation_status?.code !== 200) {
+            throw response.operation_status;
+          }
+          else if (response.items?.length !== product_ids.length) {
+            const found = response.items?.map(item => item.payload?.id);
+            const missing = product_ids.filter(
+              id => !found.includes(id)
+            );
+            throw this.createOperationStatusCode(
+              this.operation_status_codes.ITEM_NOT_FOUND,
+              'products',
+              JSON.stringify(missing)
             );
           }
           else {
-            throw response.operation_status;
+            response.items?.forEach(
+              item => products[item.payload?.id!] = item
+            );
           }
         }
       );
@@ -825,10 +832,15 @@ export class OrderingService
         if (response.operation_status?.code !== 200) {
           throw response.operation_status;
         }
-        else if (!response.items?.length) {
+        else if (response.items?.length < product_ids.length) {
+          const found = response.items?.map(item => item.payload?.id);
+          const missing = product_ids.filter(
+            id => !found.includes(id)
+          );
           throw this.createOperationStatusCode(
             this.operation_status_codes.ITEM_NOT_FOUND,
             'products',
+            JSON.stringify(missing)
           );
         }
         else {
@@ -870,7 +882,7 @@ export class OrderingService
       ];
     };
 
-    const tax_ids = JSON.stringify([
+    const tax_ids = [
       ...new Set<string>(
         Object.values(
           products
@@ -880,7 +892,7 @@ export class OrderingService
           (id) => !!id
         )
       ).values()
-    ]);
+    ];
 
     return this.tax_service.read(
       {
@@ -889,11 +901,12 @@ export class OrderingService
             {
               field: 'id',
               operation: Filter_Operation.in,
-              value: tax_ids,
+              value: JSON.stringify(tax_ids),
               type: Filter_ValueType.ARRAY,
             }
           ]
         }],
+        limit: tax_ids.length,
         subject,
       },
       context
@@ -902,10 +915,15 @@ export class OrderingService
         if (response.operation_status?.code !== 200) {
           throw response.operation_status;
         }
-        else if (!response.items?.length) {
+        else if (response.items?.length < tax_ids.length) {
+          const found = response.items?.map(item => item.payload?.id);
+          const missing = tax_ids.filter(
+            id => !found.includes(id)
+          );
           throw this.createOperationStatusCode(
             this.operation_status_codes.ITEM_NOT_FOUND,
             'taxes',
+            JSON.stringify(missing)
           );
         }
         else {
@@ -1023,10 +1041,14 @@ export class OrderingService
           throw response.operation_status;
         }
         else if (response.items?.length < ids.length) {
+          const found = response.items?.map((item: any) => item.payload?.id);
+          const missing = ids.filter(
+            id => !found.includes(id)
+          );
           throw this.createOperationStatusCode(
-            this.operation_status_codes.ITEMS_MISSING,
+            this.operation_status_codes.ITEM_NOT_FOUND,
             entity,
-            `[${ids.join(', ')}]`,
+            JSON.stringify(missing),
           );
         }
         else {
