@@ -1,4 +1,5 @@
 import * as uuid from 'uuid';
+import { BigNumber } from 'bignumber.js';
 import { Logger } from '@restorecommerce/logger';
 import { ServiceConfig } from '@restorecommerce/service-config';
 import {
@@ -113,10 +114,21 @@ import {
   InvoiceServiceDefinition
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/invoice.js';
 import {
-  Amount,
   VAT
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/amount.js';
 import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth.js';
+
+export type BigVAT = {
+  tax_id: string;
+  vat: BigNumber;
+}
+
+export type BigAmount = {
+  currency_id: string;
+  gross: BigNumber;
+  net: BigNumber;
+  vats: VAT[];
+};
 
 export type RatioedTax = Tax & {
   tax_ratio?: number;
@@ -1067,6 +1079,7 @@ export class OrderingService
     id: string | undefined,
     map: { [id: string]: T },
     request_id?: string,
+    entity_name?: string,
   ): Promise<T> {
     if (id && id in map) {
       return map[id];
@@ -1074,7 +1087,7 @@ export class OrderingService
     else {
       throw this.createStatusCode(
         request_id ?? 'undefined',
-        ({} as new() => T)?.name,
+        entity_name ?? 'undefined',
         this.status_codes.NOT_FOUND,
         id ?? 'undefined',
       );
@@ -1085,12 +1098,14 @@ export class OrderingService
     ids: (string | undefined)[] | undefined,
     map: { [id: string]: T },
     request_id?: string,
+    entity_name?: string,
   ): Promise<T[]> {
     return Promise.all(ids?.map(
       id => this.getById(
         id,
         map,
         request_id,
+        entity_name,
       )
     ) ?? []);
   }
@@ -1220,14 +1235,14 @@ export class OrderingService
         return await Promise.all([
           ...main.product?.tax_ids?.map(
             async (id) => ({
-              ...(await this.getById(id, tax_map)),
+              ...(await this.getById(id, tax_map, main.id, 'Tax')),
               tax_ratio: price_ratio
             } as RatioedTax)
           ) ?? [],
           ...main.product?.physical?.variants!.flatMap(
             variant => variant.tax_ids?.map(
               async (id) => ({
-                ...(await this.getById(id, tax_map)),
+                ...(await this.getById(id, tax_map, main.id, 'Tax')),
                 tax_ratio: price_ratio
               } as RatioedTax)
             ) ?? []
@@ -1235,7 +1250,7 @@ export class OrderingService
           ...main.product?.virtual?.variants!.flatMap(
             variant => variant.tax_ids?.map(
               async (id) => ({
-                ...(await this.getById(id, tax_map)),
+                ...(await this.getById(id, tax_map, main.id, 'Tax')),
                 tax_ratio: price_ratio
               } as RatioedTax)
             ) ?? []
@@ -1269,21 +1284,25 @@ export class OrderingService
           order?.customer_id,
           customer_map,
           order.id,
+          'Customer',
         );
         const shop = await this.getById(
           order?.shop_id,
           shop_map,
           order.id,
+          'Shop',
         );
         const country = await this.getById(
           shop.payload?.organization_id,
           organization_map,
           order.id,
+          'Organization',
         ).then(
           orga => this.getByIds(
             orga.payload!.contact_point_ids!,
             contact_point_map,
             order.id,
+            'ContactPoint',
           )
         ).then(
           cps => cps.find(
@@ -1308,6 +1327,7 @@ export class OrderingService
                 cp.payload?.physical_address_id,
                 address_map,
                 order.id,
+                'Address',
               );
             }
           }
@@ -1316,6 +1336,7 @@ export class OrderingService
             address.payload?.country_id,
             country_map,
             order.id,
+            'Country',
           )
         ).then(
           country => country.payload
@@ -1355,17 +1376,19 @@ export class OrderingService
                 item.product_id,
                 product_map,
                 order.id,
+                'Product',
               );
               const billing_country = await this.getById(
                 order.billing_address?.address?.country_id,
                 country_map,
                 order.id,
+                'Country',
               );
               const nature = (product.payload!.product?.physical ?? product.payload!.product?.virtual) as ProductNature;
               const variant = mergeProductVariantRecursive(nature, item.variant_id);
               const taxes = await getTaxesRecursive(product.payload!);
               const unit_price = product.payload!.bundle ? product.payload!.bundle?.price : variant?.price;
-              const gross = (unit_price?.sale ? unit_price?.sale_price ?? 0 : unit_price?.regular_price ?? 0) * (item.quantity ?? 0);
+              const gross = new BigNumber(unit_price?.sale ? unit_price?.sale_price ?? 0 : unit_price?.regular_price ?? 0).multipliedBy(item.quantity ?? 0);
               const vats = taxes.filter(
                 t => (
                   t.country_id === country?.id &&
@@ -1378,17 +1401,17 @@ export class OrderingService
                   )
                 )
               ).map(
-                t => ({
+                (t): VAT => ({
                   tax_id: t.id,
-                  vat: gross * t.rate! * t.tax_ratio!
-                }) as VAT
+                  vat: gross.multipliedBy(t.rate!).multipliedBy(t.tax_ratio!).decimalPlaces(2).toNumber()
+                })
               );
-              const net = vats.reduce((a, b) => b.vat! + a, gross);
+              const net = vats.reduce((a, b) => a.plus(b.vat!), gross);
               item.unit_price = unit_price;
               item.amount = {
                 currency_id: unit_price.currency_id,
-                gross,
-                net,
+                gross: gross.decimalPlaces(2).toNumber(),
+                net: net.decimalPlaces(2).toNumber(),
                 vats,
               };
             }
@@ -1407,17 +1430,29 @@ export class OrderingService
           (amounts, item) => {
             const amount = amounts[item.amount?.currency_id!];
             if (amount) {
-              amount.gross! += item.amount?.gross!;
-              amount.net! += item.amount?.net!;
-              amount.vats!.push(...item.amount?.vats!);
+              amount.gross = amount.gross.plus(item.amount.gross!);
+              amount.net = amount.net.plus(item.amount?.net!);
+              amount.vats.push(...item.amount?.vats!);
             }
             else {
-              amounts[item.amount?.currency_id!] = { ...item.amount };
+              amounts[item.amount.currency_id!] = {
+                currency_id: item.amount.currency_id,
+                gross: new BigNumber(item.amount.gross!),
+                net: new BigNumber(item.amount.net!),
+                vats: item.amount.vats,
+              };
             }
             return amounts;
           },
-          {} as { [key: string]: Amount }
-        ));
+          {} as { [key: string]: BigAmount }
+        )).map(
+          big => ({
+            currency_id: big.currency_id,
+            gross: big.gross.decimalPlaces(2).toNumber(),
+            net: big.net.decimalPlaces(2).toNumber(),
+            vats: big.vats,
+          })
+        );
 
         order.total_amounts.forEach(
           amount => {
@@ -1425,15 +1460,23 @@ export class OrderingService
               amount.vats?.reduce(
                 (vats, vat) => {
                   if (vat.tax_id! in vats) {
-                    vats[vat.tax_id!].vat = (vats[vat.tax_id!]?.vat ?? 0) + vat.vat!;
+                    vats[vat.tax_id!].vat = vats[vat.tax_id!]?.vat.plus(vat.vat) ?? new BigNumber(vat.vat);
                   }
                   else {
-                    vats[vat.tax_id!] = { ...vat };
+                    vats[vat.tax_id!] = { 
+                      tax_id: vat.tax_id,
+                      vat: new BigNumber(vat.vat)
+                    };
                   }
                   return vats;
                 },
-                {} as { [key: string]: VAT }
+                {} as { [key: string]: BigVAT }
               ) ?? {}
+            ).map(
+              big => ({
+                tax_id: big.tax_id,
+                vat: big.vat.decimalPlaces(2).toNumber()
+              })
             );
           }
         );
