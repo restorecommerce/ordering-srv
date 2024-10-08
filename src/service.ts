@@ -121,7 +121,7 @@ import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/
 export type BigVAT = {
   tax_id: string;
   vat: BigNumber;
-}
+};
 
 export type BigAmount = {
   currency_id: string;
@@ -1439,7 +1439,7 @@ export class OrderingService
                 currency_id: item.amount.currency_id,
                 gross: new BigNumber(item.amount.gross!),
                 net: new BigNumber(item.amount.net!),
-                vats: item.amount.vats,
+                vats: [...item.amount.vats],
               };
             }
             return amounts;
@@ -1463,7 +1463,7 @@ export class OrderingService
                     vats[vat.tax_id!].vat = vats[vat.tax_id!]?.vat.plus(vat.vat) ?? new BigNumber(vat.vat);
                   }
                   else {
-                    vats[vat.tax_id!] = { 
+                    vats[vat.tax_id!] = {
                       tax_id: vat.tax_id,
                       vat: new BigNumber(vat.vat)
                     };

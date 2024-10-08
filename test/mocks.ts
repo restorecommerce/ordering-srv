@@ -156,7 +156,7 @@ const countries: CountryResponse[] = [{
     countryCode: 'DE',
     name: 'Deutschland',
     geographicalName: 'Germany',
-    economicAreas: [],
+    economicAreas: ['EU'],
   },
   status: {
     id: 'germany',
@@ -172,7 +172,7 @@ const taxes: TaxResponse[] = [
       countryId: 'germany',
       rate: 0.19,
       typeId: 'taxType_1',
-      variant: 'MwSt.'
+      abbreviation: 'MwSt.',
     },
     status: {
       id: 'tax_1',
@@ -265,6 +265,88 @@ const products: ProductResponse[] = [
       message: 'OK',
     }
   },
+  {
+    payload: {
+      id: 'physicalProduct_2',
+      active: true,
+      shopId: 'shop_1',
+      tags: [],
+      associations: [],
+      product: {
+        name: 'Physical Product 2',
+        description: 'This is a physical product',
+        manufacturerId: 'manufacturer_1',
+        taxIds: [
+          taxes[0].payload?.id as string,
+        ],
+        physical: {
+          variants: [
+            {
+              id: '1',
+              name: 'Physical Product 1 Blue',
+              description: 'This is a physical product in blue',
+              price: {
+                currencyId: 'currency_1',
+                regularPrice: 19.99,
+                salePrice: 18.99,
+                sale: false,
+              },
+              images: [],
+              files: [],
+              stockKeepingUnit: '123456789',
+              stockLevel: 300,
+              package: {
+                sizeInCm: {
+                  height: 10,
+                  length: 20,
+                  width: 15,
+                },
+                weightInKg: 0.58,
+                rotatable: true,
+              },
+              properties: [
+                {
+                  id: 'urn:product:property:color:main:name',
+                  value: 'blue',
+                  unitCode: 'text',
+                },
+                {
+                  id: 'urn:product:property:color:main:value',
+                  value: '#0000FF',
+                  unitCode: '#RGB',
+                }
+              ],
+            },
+            {
+              id: '2',
+              name: 'Physical Product 1 Red',
+              description: 'This is a physical product in red',
+              images: [],
+              files: [],
+              properties: [
+                {
+                  id: 'urn:product:property:color:main:name',
+                  value: 'red',
+                  unitCode: 'text',
+                },
+                {
+                  id: 'urn:product:property:color:main:value',
+                  value: '#FF0000',
+                  unitCode: '#RGB',
+                }
+              ],
+              parentVariantId: '1',
+            }
+          ]
+        }
+      },
+    },
+    status: {
+      id: 'physicalProduct_2',
+      code: 200,
+      message: 'OK',
+    }
+  },
 ];
 
 const contactPoints = [
@@ -314,7 +396,7 @@ const shops = [
       id: 'shop_1',
       name: 'Shop1',
       description: 'a mocked shop for unit tests',
-      domain: 'www.shop.com',
+      domains: ['www.shop.com'],
       organizationId: organizations[0].payload?.id,
       shopNumber: '0000000001',
     },
@@ -336,6 +418,11 @@ const validOrders: { [key: string]: OrderList } = {
             productId: products[0]?.payload?.id,
             variantId: products[0]?.payload?.product?.physical?.variants?.[0]?.id,
             quantity: 4,
+          },
+          {
+            productId: products[1]?.payload?.id,
+            variantId: products[1]?.payload?.product?.physical?.variants?.[0]?.id,
+            quantity: 2,
           }
         ],
         notificationEmail: 'user@test.spec',
@@ -366,6 +453,11 @@ const validOrders: { [key: string]: OrderList } = {
             productId: products[0]?.payload?.id,
             variantId: products[0]?.payload?.product?.physical?.variants?.[0]?.id,
             quantity: 4,
+          },
+          {
+            productId: products[1]?.payload?.id,
+            variantId: products[1]?.payload?.product?.physical?.variants?.[0]?.id,
+            quantity: 2,
           }
         ],
         userId: 'user_1',
@@ -401,6 +493,11 @@ const invalidOrders: { [key: string]: OrderList } = {
             productId: products[0]?.payload?.id,
             variantId: products[0]?.payload?.product?.physical?.variants?.[0]?.id,
             quantity: 4,
+          },
+          {
+            productId: products[1]?.payload?.id,
+            variantId: products[1]?.payload?.product?.physical?.variants?.[0]?.id,
+            quantity: 2,
           }
         ],
         userId: 'userId_1',
