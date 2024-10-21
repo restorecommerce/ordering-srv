@@ -264,7 +264,6 @@ describe('The Ordering Service:', () => {
       const query: FulfillmentRequestList = {
         items: sample.items?.map(order => ({
           orderId: order.id,
-          selectedItems: [],
           senderAddress: samples.businessAddresses[0],
         })),
         totalCount: sample.items?.length,
