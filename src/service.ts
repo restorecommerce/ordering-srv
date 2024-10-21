@@ -474,7 +474,7 @@ export class OrderingService
     this.contact_point_type_ids = {
       ...this.contact_point_type_ids,
       ...cfg.get('contactPointTypeIds')
-    }
+    };
 
     this.product_service = createClient(
       {
@@ -1635,7 +1635,7 @@ export class OrderingService
               this.topic.emit(this.emitters['INVALID'], item);
             }
             else if (item?.payload?.order_state! in this.emitters) {
-              this.topic.emit(this.emitters[item.payload?.order_state!], item);
+              this.topic.emit(this.emitters[item.payload?.order_state!], item.payload);
             }
           }
         );
@@ -1851,7 +1851,7 @@ export class OrderingService
           ).map(
             item => {
               item.payload!.order_state = OrderState.PENDING;
-              return item
+              return item;
             }
           ),
           operation_status: response.operation_status
@@ -1895,7 +1895,7 @@ export class OrderingService
             response.operation_status = r.operation_status;
             return r.items;
           }
-        )
+        );
       }
 
       if (this.creates_invoices_on_submit) {
@@ -1993,10 +1993,10 @@ export class OrderingService
         const submits = Object.values(response_map).filter(
           order => order.status?.code === 200
         ).map(
-          order => ({
-            ...order.payload,
-            order_state: OrderState.SUBMITTED,
-          })
+          order => {
+            order.payload.order_state = OrderState.SUBMITTED;
+            return order.payload;
+          }
         );
 
         await super.upsert(
@@ -2028,7 +2028,7 @@ export class OrderingService
             this.topic.emit(this.emitters['INVALID'], item);
           }
           else if (item.payload?.order_state! in this.emitters) {
-            this.topic.emit(this.emitters[item.payload.order_state!], item);
+            this.topic.emit(this.emitters[item.payload.order_state!], item.payload);
           }
         }
       );
@@ -2189,7 +2189,7 @@ export class OrderingService
           shop_id: order.payload?.shop_id,
           customer_id: order.payload?.customer_id,
         };
-        return query
+        return query;
       }
     ).filter(
       query => query.items?.length
@@ -2246,6 +2246,12 @@ export class OrderingService
     orders?: OrderMap,
     context?: any,
   ): Promise<FulfillmentResponse[]> {
+    orders ??= await this.getOrderMap(
+      request.items?.map(item => item.order_id!),
+      request.subject,
+      context
+    ) ?? {};
+
     const solutions = await this.getPackingSolution(
       request,
       context,
@@ -2313,6 +2319,12 @@ export class OrderingService
     context?: any,
   ): Promise<FulfillmentListResponse> {
     try {
+      orders ??= await this.getOrderMap(
+        request.items?.map(item => item.order_id!),
+        request.subject,
+        context
+      ) ?? {};
+
       const prototypes = await this.toFulfillmentResponsePrototypes(
         request,
         orders,
@@ -2323,22 +2335,23 @@ export class OrderingService
         proto => proto.status?.code !== 200
       );
 
-      const valids = await DefaultMetaDataInjector(
-        this,
-        {
-          items: prototypes.filter(
-            proto => proto.status?.code === 200
-          ).map(
-            proto => proto.payload!
-          ),
-          subject: request.subject,
+      const valids = prototypes.filter(
+        proto => proto.status?.code === 200
+      ).map(
+        item => {
+          item.payload.meta ??= {};
+          if (!item.payload.meta.owners?.length) {
+            const order = orders[item.payload.references[0].instance_id];
+            item.payload.meta.owners = order.payload?.meta?.owners;
+          }
+          return item.payload;
         }
       );
 
       const response = await this.fulfillment_service!.create(
         {
-          items: valids.items,
-          total_count: valids.items.length ?? 0,
+          items: valids,
+          total_count: valids.length ?? 0,
           subject: this.fulfillment_tech_user ?? this.ApiKey ?? request.subject,
         },
         context
@@ -2378,7 +2391,7 @@ export class OrderingService
     request: FulfillmentRequestList,
     context?: any
   ): Promise<FulfillmentListResponse> {
-    return this._createFulfillment(request, undefined, context); 
+    return this._createFulfillment(request, undefined, context);
   }
 
   @resolves_subject(
@@ -2407,6 +2420,7 @@ export class OrderingService
 
       const items = await this.toFulfillmentResponsePrototypes(
         request,
+        undefined,
         context
       ).then(
         prototypes => {

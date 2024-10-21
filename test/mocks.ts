@@ -98,6 +98,10 @@ const mainMeta = {
 };
 
 const subjects: { [key: string]: Subject } = {
+  root_tech_user: {
+    id: "root_tech_user",
+    token: "1a4c6789-6435-487a-9308-64d06384acf9"
+  },
   superadmin: {
     id: 'superadmin',
     scope: 'main',
@@ -577,6 +581,30 @@ const invalidOrders: { [key: string]: OrderList } = {
 };
 
 const users: { [key: string]: UserResponse } = {
+  root_tech_user: {
+    payload: {
+      id: 'root_tech_user',
+      role_associations: [
+        {
+          id: 'root_tech_user-1-super-administrator-r-id',
+          role: 'superadministrator-r-id',
+          attributes: [],
+        },
+      ],
+      active: true,
+      user_type: UserType.TECHNICAL_USER,
+      tokens: [
+        {
+          token: '1a4c6789-6435-487a-9308-64d06384acf9',
+        }
+      ],
+    },
+    status: {
+      id: 'root_tech_user',
+      code: 200,
+      message: 'OK',
+    }
+  },
   superadmin: {
     payload: {
       id: 'superadmin',
@@ -657,6 +685,17 @@ const users: { [key: string]: UserResponse } = {
 };
 
 const hierarchicalScopes: { [key: string]: HierarchicalScope[] } = {
+  root_tech_user: [
+    {
+      id: 'main',
+      role: 'superadministrator-r-id',
+      children: [
+        {
+          id: 'sub',
+        }
+      ]
+    }
+  ],
   superadmin: [
     {
       id: 'main',
