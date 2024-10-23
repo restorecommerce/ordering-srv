@@ -322,7 +322,7 @@ export class OrderingService
       code: 200,
       message: 'OK',
     },
-    NOT_FOUND: {
+    ITEM_NOT_FOUND: {
       id: '',
       code: 404,
       message: '{entity} {id} not found!',
@@ -357,6 +357,11 @@ export class OrderingService
       code: 400,
       message: '{entity} {id} must have identical customer_id and shop_id to master {entity}!',
     },
+    SOLUTION_NOT_FOUND: {
+      id: '',
+      code: 404,
+      message: 'Solution for {entity} {id} not found!', 
+    }
   };
 
   private readonly operation_status_codes = {
@@ -777,6 +782,25 @@ export class OrderingService
     }
   }
 
+  private mergeProductVariantRecursive(
+    nature: ProductNature,
+    variant_id: string,
+  ): ProductVariant {
+    const variant = nature?.variants?.find(v => v.id === variant_id);
+    if (variant?.parent_variant_id) {
+      const template = this.mergeProductVariantRecursive(
+        nature, variant.parent_variant_id
+      );
+      return {
+        ...template,
+        ...variant,
+      };
+    }
+    else {
+      return variant;
+    }
+  };
+
   private flatMapProductToFulfillmentItem(
     products: ProductMap,
     product_id: string,
@@ -784,16 +808,27 @@ export class OrderingService
     quantity = 1
   ): FulfillmentItem[] {
     const main = products[product_id]?.payload;
-    const variant = main?.product?.physical?.variants?.find(v => v.id === variant_id);
-    if (variant) {
+    if (main?.product?.physical) {
+      const variant = this.mergeProductVariantRecursive(
+        main.product?.physical,
+        variant_id
+      );
+      if (!variant) {
+        throw this.createStatusCode(
+          variant_id,
+          'Product Variant',
+          this.status_codes.ITEM_NOT_FOUND,
+        );
+      }
+
       return [{
-        product_id: main!.id,
+        product_id: main.id,
         variant_id,
         quantity,
         package: variant.package,
       }];
     }
-    else if (main!.bundle?.pre_packaged) {
+    else if (main?.bundle?.pre_packaged) {
       return [{
         product_id: main!.id,
         variant_id,
@@ -801,8 +836,8 @@ export class OrderingService
         package: main!.bundle.pre_packaged,
       }];
     }
-    else {
-      return main!.bundle?.products?.flatMap(
+    else if (main?.bundle?.products) {
+      return main.bundle.products.flatMap(
         item => this.flatMapProductToFulfillmentItem(
           products,
           item.product_id!,
@@ -810,6 +845,13 @@ export class OrderingService
           item.quantity,
         )
       ) ?? [];
+    }
+    else if (!main) {
+      throw this.createStatusCode(
+        product_id,
+        'Product',
+        this.status_codes.ITEM_NOT_FOUND,
+      );
     }
   };
 
@@ -1105,7 +1147,7 @@ export class OrderingService
       throw this.createStatusCode(
         request_id ?? 'undefined',
         entity_name ?? 'undefined',
-        this.status_codes.NOT_FOUND,
+        this.status_codes.ITEM_NOT_FOUND,
         id ?? 'undefined',
       );
     }
@@ -1276,25 +1318,6 @@ export class OrderingService
       }
     };
 
-    const mergeProductVariantRecursive = (
-      nature: ProductNature,
-      variant_id: string | undefined,
-    ): ProductVariant | undefined => {
-      const variant = nature?.variants?.find(v => v.id === variant_id);
-      if (variant?.parent_variant_id) {
-        const template = mergeProductVariantRecursive(
-          nature, variant.parent_variant_id
-        );
-        return {
-          ...template,
-          ...variant,
-        };
-      }
-      else {
-        return variant;
-      }
-    };
-
     const promises = order_list.items?.map(async (order) => {
       try {
         const customer = await this.getById(
@@ -1400,7 +1423,7 @@ export class OrderingService
                 'Country',
               );
               const nature = (product.payload!.product?.physical ?? product.payload!.product?.virtual) as ProductNature;
-              const variant = mergeProductVariantRecursive(nature, item.variant_id);
+              const variant = this.mergeProductVariantRecursive(nature, item.variant_id);
               const taxes = await getTaxesRecursive(product.payload!);
               const unit_price = product.payload!.bundle ? product.payload!.bundle?.price : variant?.price;
               const gross = new BigNumber(unit_price?.sale ? unit_price?.sale_price ?? 0 : unit_price?.regular_price ?? 0).multipliedBy(item.quantity ?? 0);
@@ -1872,23 +1895,16 @@ export class OrderingService
             })),
             subject: this.fulfillment_tech_user ?? this.ApiKey ?? request.subject,
           },
-          toObjectMap<OrderMap>(orders.items),
           context,
+          toObjectMap<OrderMap>(orders.items),
         ).then(
           r => {
             r.items?.forEach(
               fulfillment => {
-                fulfillment.payload?.references?.forEach(
-                  reference => {
-                    const order = response_map[reference?.instance_id!];
-                    if (fulfillment.status?.code !== 200 && order) {
-                      order.status = {
-                        ...fulfillment.status,
-                        id: order.payload?.id ?? order.status?.id,
-                      };
-                    }
-                  }
-                );
+                const order = response_map[fulfillment.status?.id];
+                if (fulfillment.status?.code !== 200) {
+                  order.status = fulfillment.status;
+                }
               }
             );
 
@@ -2117,9 +2133,7 @@ export class OrderingService
           reference: {
             instance_type: this.instanceType,
             instance_id: b.order_id,
-          },
-          solutions: undefined,
-          status: undefined,
+          }
         };
         return a;
       },
@@ -2147,7 +2161,7 @@ export class OrderingService
           response.status = this.createStatusCode(
             item.order_id,
             this.entityName,
-            this.status_codes.NOT_FOUND,
+            this.status_codes.ITEM_NOT_FOUND,
             item.order_id,
           );
           return false;
@@ -2164,7 +2178,7 @@ export class OrderingService
       item => {
         const response = response_map[item.order_id!];
         const order = orders?.[item.order_id!];
-        const items = order?.payload?.items?.flatMap(
+        const items = order.payload?.items?.flatMap(
           item => this.flatMapProductToFulfillmentItem(
             products!,
             item.product_id!,
@@ -2183,6 +2197,10 @@ export class OrderingService
         }
 
         const query: PackingSolutionQuery = {
+          reference: {
+            instance_type: this.instanceType,
+            instance_id: order.payload.id,
+          },
           recipient: order.payload?.shipping_address,
           items,
           preferences: order.payload?.packaging_preferences,
@@ -2207,7 +2225,10 @@ export class OrderingService
 
     solutions?.items?.forEach(
       item => {
-        response_map[item.reference?.instance_id ?? item.status?.id!] = item;
+        const id = item.reference?.instance_id ?? item.status?.id;
+        if (id) {
+          response_map[id] = item;
+        }
       }
     );
 
@@ -2243,8 +2264,8 @@ export class OrderingService
 
   private async toFulfillmentResponsePrototypes(
     request: FulfillmentRequestList,
-    orders?: OrderMap,
     context?: any,
+    orders?: OrderMap,
   ): Promise<FulfillmentResponse[]> {
     orders ??= await this.getOrderMap(
       request.items?.map(item => item.order_id!),
@@ -2261,7 +2282,7 @@ export class OrderingService
         if (response.operation_status?.code === 200) {
           return response.items?.reduce(
             (a, b) => {
-              a[b.reference?.instance_id ?? b.status?.id!] = b;
+              a[b.reference?.instance_id ?? b.status?.id] = b;
               return a;
             },
             {} as PackingSolutionMap
@@ -2273,18 +2294,17 @@ export class OrderingService
       }
     );
 
+    this.logger.debug('Solutions:', solutions);
     return request.items?.map(
       item => {
         const order = orders[item.order_id!];
         const solution = solutions?.[item.order_id!];
-        const status = [
-          solution?.status,
-          order?.status,
-        ].find(status => status?.code === 200) ?? {
-          id: item.order_id,
-          code: 404,
-          message: `Order ${item.order_id} not found!`,
-        } as Status;
+        const status = solution?.status ?? this.createStatusCode(
+          item.order_id,
+          'Order',
+          this.status_codes.SOLUTION_NOT_FOUND,
+          item.order_id,
+        );
 
         const fulfillment: FulfillmentResponse = {
           payload:
@@ -2295,7 +2315,7 @@ export class OrderingService
                   instance_id: item.order_id,
                 }],
                 packaging: {
-                  parcels: solution?.solutions?.[0]?.parcels,
+                  parcels: solution.solutions[0].parcels,
                   notify: order.payload?.notification_email,
                   export_type: item.export_type,
                   export_description: item.export_description,
@@ -2303,9 +2323,12 @@ export class OrderingService
                   sender: item.sender_address,
                   recipient: order.payload?.shipping_address,
                 } as Packaging,
-                total_amounts: solution?.solutions?.[0]?.amounts,
+                total_amounts: solution.solutions[0].amounts,
               } : undefined,
-          status,
+          status: {
+            ...status,
+            id: item.order_id,
+          },
         };
 
         return fulfillment;
@@ -2315,8 +2338,8 @@ export class OrderingService
 
   private async _createFulfillment(
     request: FulfillmentRequestList,
-    orders?: OrderMap,
     context?: any,
+    orders?: OrderMap,
   ): Promise<FulfillmentListResponse> {
     try {
       orders ??= await this.getOrderMap(
@@ -2327,31 +2350,31 @@ export class OrderingService
 
       const prototypes = await this.toFulfillmentResponsePrototypes(
         request,
+        context,
         orders,
-        context
       );
 
       const invalids = prototypes.filter(
-        proto => proto.status?.code !== 200
+        item => item.status?.code !== 200
       );
 
       const valids = prototypes.filter(
-        proto => proto.status?.code === 200
+        item => item.status?.code === 200
       ).map(
         item => {
           item.payload.meta ??= {};
           if (!item.payload.meta.owners?.length) {
-            const order = orders[item.payload.references[0].instance_id];
+            const order = orders[item.status.id];
             item.payload.meta.owners = order.payload?.meta?.owners;
           }
           return item.payload;
         }
       );
 
-      const response = await this.fulfillment_service!.create(
+      const response = valids.length && await this.fulfillment_service.create(
         {
           items: valids,
-          total_count: valids.length ?? 0,
+          total_count: valids.length,
           subject: this.fulfillment_tech_user ?? this.ApiKey ?? request.subject,
         },
         context
@@ -2359,7 +2382,7 @@ export class OrderingService
 
       return {
         items: [
-          ...response.items!,
+          ...(response?.items ?? []),
           ...invalids
         ],
         total_count: response.items?.length! + invalids.length,
@@ -2368,7 +2391,7 @@ export class OrderingService
             this.operation_status_codes.PARTIAL,
             'fulfillment',
           )
-          : response.operation_status,
+          : response?.operation_status,
       };
     }
     catch (e) {
@@ -2391,7 +2414,7 @@ export class OrderingService
     request: FulfillmentRequestList,
     context?: any
   ): Promise<FulfillmentListResponse> {
-    return this._createFulfillment(request, undefined, context);
+    return this._createFulfillment(request, context);
   }
 
   @resolves_subject(
@@ -2420,7 +2443,6 @@ export class OrderingService
 
       const items = await this.toFulfillmentResponsePrototypes(
         request,
-        undefined,
         context
       ).then(
         prototypes => {
@@ -2497,7 +2519,7 @@ export class OrderingService
             status: master?.status ?? this.createStatusCode(
               item.sections?.[0]?.order_id,
               this.entityName,
-              this.status_codes.NOT_FOUND,
+              this.status_codes.ITEM_NOT_FOUND,
               item.sections?.[0]?.order_id,
             )
           };
@@ -2512,7 +2534,7 @@ export class OrderingService
               status: order?.status ?? this.createStatusCode(
                 section.order_id,
                 this.entityName,
-                this.status_codes.NOT_FOUND,
+                this.status_codes.ITEM_NOT_FOUND,
                 section.order_id,
               )
             };

@@ -219,13 +219,21 @@
     },
     "fulfillment_product": {
       "disabled": false,
-      "address": "localhost:50067"
+      "address": "localhost:50067",
+      "tech_user": {
+        "id": "root_tech_user",
+        "token": "1a4c6789-6435-487a-9308-64d06384acf9"
+      }
     },
     "invoice": {
       "disabled": true,
       "address": "localhost:50077",
       "createOnSubmit": true,
-      "cleanupPostSubmit": true
+      "cleanupPostSubmit": true,
+      "tech_user": {
+        "id": "root_tech_user",
+        "token": "1a4c6789-6435-487a-9308-64d06384acf9"
+      }
     }
   },
   "server": {
@@ -346,7 +354,9 @@
       "message": "Action not allowed on this resource"
     }
   },
-  "preDefinedIds": {
-    "legalAddressTypeId": "legal"
+  "contactPointTypeIds": {
+    "legal": "legal",
+    "shipping": "shipping",
+    "billing": "billing"
   }
 }
