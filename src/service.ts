@@ -1095,7 +1095,7 @@ export class OrderingService
         filters: [{
           filters: [
             {
-              field: 'id',
+              field: '_key',
               operation: Filter_Operation.in,
               value: JSON.stringify(ids),
               type: Filter_ValueType.ARRAY,
@@ -1901,8 +1901,9 @@ export class OrderingService
           r => {
             r.items?.forEach(
               fulfillment => {
-                const order = response_map[fulfillment.status?.id];
-                if (fulfillment.status?.code !== 200) {
+                const id = fulfillment.payload?.references?.[0]?.instance_id ?? fulfillment.status?.id
+                const order = response_map[id];
+                if (order && fulfillment.status?.code !== 200) {
                   order.status = fulfillment.status;
                 }
               }
@@ -2310,6 +2311,9 @@ export class OrderingService
           payload:
             status?.code === 200 ?
               {
+                shop_id: order.payload.shop_id,
+                customer_id: order.payload.customer_id,
+                user_id: order.payload.user_id,
                 references: [{
                   instance_type: this.instanceType,
                   instance_id: item.order_id,
@@ -2334,6 +2338,87 @@ export class OrderingService
         return fulfillment;
       }
     ) ?? [];
+  }
+
+  private async _evaluateFulfillment(
+    request: FulfillmentRequestList,
+    context?: any,
+    orders?: OrderMap,
+  ): Promise<FulfillmentListResponse> {
+    try {
+      orders ??= await this.getOrderMap(
+        request.items?.map(item => item.order_id!),
+        request.subject,
+        context
+      ) ?? {};
+
+      const prototypes = await this.toFulfillmentResponsePrototypes(
+        request,
+        context,
+        orders,
+      );
+
+      const invalids = prototypes.filter(
+        item => item.status?.code !== 200
+      );
+
+      const valids = prototypes.filter(
+        item => item.status?.code === 200
+      ).map(
+        item => {
+          item.payload.meta ??= {};
+          if (!item.payload.meta.owners?.length) {
+            const order = orders[item.status.id];
+            item.payload.meta.owners = order.payload?.meta?.owners;
+          }
+          return item;
+        }
+      );
+
+      const evaluated = valids.length ? await this.fulfillment_service.evaluate(
+        {
+          items: valids.map(item => item.payload),
+          total_count: valids.length,
+          subject: this.fulfillment_tech_user ?? this.ApiKey ?? request.subject,
+        },
+        context
+      ).then(
+        response => {
+          if (response.operation_status?.code !== 200) {
+            throw response.operation_status;
+          }
+          response.items = response.items?.filter(
+            item => {
+              if (item.status?.code === 200) {
+                return true;
+              }
+              else {
+                invalids.push(item);
+                return false;
+              }
+            }
+          );
+          return response;
+        }
+      ) : undefined;
+
+      return {
+        items: [
+          ...(evaluated?.items ?? []),
+          ...invalids
+        ],
+        total_count: valids.length + invalids.length,
+        operation_status: invalids.length
+          ? this.createOperationStatusCode(
+            this.operation_status_codes.PARTIAL,
+            'fulfillment',
+          )
+          : evaluated?.operation_status,
+      };
+    }
+    catch (e) {
+      return this.catchOperationError(e);
+    }
   }
 
   private async _createFulfillment(
@@ -2367,31 +2452,76 @@ export class OrderingService
             const order = orders[item.status.id];
             item.payload.meta.owners = order.payload?.meta?.owners;
           }
-          return item.payload;
+          return item;
         }
       );
 
-      const response = valids.length && await this.fulfillment_service.create(
+      const evaluated = valids.length ? await this.fulfillment_service.evaluate(
         {
-          items: valids,
+          items: valids.map(item => item.payload),
           total_count: valids.length,
           subject: this.fulfillment_tech_user ?? this.ApiKey ?? request.subject,
         },
         context
-      );
+      ).then(
+        response => {
+          if (response.operation_status?.code !== 200) {
+            throw response.operation_status;
+          }
+          response.items = response.items?.filter(
+            item => {
+              if (item.status?.code === 200) {
+                return true;
+              }
+              else {
+                invalids.push(item);
+                return false;
+              }
+            }
+          );
+          return response;
+        }
+      ) : undefined;
+      
+      const created = evaluated?.items?.length ? await this.fulfillment_service.create(
+        {
+          items: evaluated.items.map(item => item.payload),
+          total_count: evaluated.items.length,
+          subject: this.fulfillment_tech_user ?? this.ApiKey ?? request.subject,
+        },
+        context
+      ).then(
+        response => {
+          if (response?.operation_status?.code !== 200) {
+            throw response.operation_status;
+          }
+          response.items = response.items?.filter(
+            item => {
+              if (item.status?.code === 200) {
+                return true;
+              }
+              else {
+                invalids.push(item);
+                return false;
+              }
+            }
+          );
+          return response;
+        }
+      ) : undefined;
 
       return {
         items: [
-          ...(response?.items ?? []),
+          ...(created?.items ?? []),
           ...invalids
         ],
-        total_count: response.items?.length! + invalids.length,
+        total_count: valids.length + invalids.length,
         operation_status: invalids.length
           ? this.createOperationStatusCode(
             this.operation_status_codes.PARTIAL,
             'fulfillment',
           )
-          : response?.operation_status,
+          : created?.operation_status,
       };
     }
     catch (e) {
