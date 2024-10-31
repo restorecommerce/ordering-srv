@@ -1266,7 +1266,17 @@ export class OrderingService
           address_map
         ).map(
           item => item.payload?.country_id
-        )
+        ),
+        ...(
+          order_list.items?.map(
+            order => order.billing_address?.address?.country_id
+          ) ?? []
+        ),
+        ...(
+          order_list.items?.map(
+            order => order.shipping_address?.address?.country_id
+          ) ?? []
+        ),
       ],
       this.country_service,
       'countries',
@@ -1785,11 +1795,12 @@ export class OrderingService
     context?: any
   ): Promise<OrderListResponse> {
     try {
-      return await this.aggregateOrders(
+      const orders = await this.aggregateOrders(
         request,
         request.subject,
         context
       );
+      return orders;
     }
     catch (e) {
       return this.catchOperationError(e);
@@ -2427,23 +2438,21 @@ export class OrderingService
     orders?: OrderMap,
   ): Promise<FulfillmentListResponse> {
     try {
-      orders ??= await this.getOrderMap(
-        request.items?.map(item => item.order_id!),
-        request.subject,
-        context
-      ) ?? {};
-
-      const prototypes = await this.toFulfillmentResponsePrototypes(
+      const evaluated = await this._evaluateFulfillment(
         request,
         context,
         orders,
       );
 
-      const invalids = prototypes.filter(
+      if (evaluated?.operation_status?.code >= 300) {
+        throw evaluated.operation_status;
+      }
+
+      const invalids = evaluated?.items?.filter(
         item => item.status?.code !== 200
       );
 
-      const valids = prototypes.filter(
+      const valids = evaluated?.items?.filter(
         item => item.status?.code === 200
       ).map(
         item => {
@@ -2455,38 +2464,11 @@ export class OrderingService
           return item;
         }
       );
-
-      const evaluated = valids.length ? await this.fulfillment_service.evaluate(
+      
+      const created = valids?.length ? await this.fulfillment_service.create(
         {
           items: valids.map(item => item.payload),
           total_count: valids.length,
-          subject: this.fulfillment_tech_user ?? this.ApiKey ?? request.subject,
-        },
-        context
-      ).then(
-        response => {
-          if (response.operation_status?.code !== 200) {
-            throw response.operation_status;
-          }
-          response.items = response.items?.filter(
-            item => {
-              if (item.status?.code === 200) {
-                return true;
-              }
-              else {
-                invalids.push(item);
-                return false;
-              }
-            }
-          );
-          return response;
-        }
-      ) : undefined;
-      
-      const created = evaluated?.items?.length ? await this.fulfillment_service.create(
-        {
-          items: evaluated.items.map(item => item.payload),
-          total_count: evaluated.items.length,
           subject: this.fulfillment_tech_user ?? this.ApiKey ?? request.subject,
         },
         context
