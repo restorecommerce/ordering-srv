@@ -1090,6 +1090,21 @@ export const rules = {
       totalCount: 1,
       operationStatus
     }),
+    evaluate: (
+      call: any,
+      callback: (error: any, response: FulfillmentListResponse) => void,
+    ) => callback(null, {
+      items: call.request.items.map(
+        (item: FulfillmentResponse) => ({
+          payload: item,
+          status: {
+            code: 200,
+          }
+        })
+      ),
+      totalCount: 1,
+      operationStatus
+    }),
   },
   invoice: {
     create: (

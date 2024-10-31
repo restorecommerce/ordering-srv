@@ -360,7 +360,7 @@ export class OrderingService
     SOLUTION_NOT_FOUND: {
       id: '',
       code: 404,
-      message: 'Solution for {entity} {id} not found!', 
+      message: 'Solution for {entity} {id} not found!',
     }
   };
 
@@ -1912,7 +1912,7 @@ export class OrderingService
           r => {
             r.items?.forEach(
               fulfillment => {
-                const id = fulfillment.payload?.references?.[0]?.instance_id ?? fulfillment.status?.id
+                const id = fulfillment.payload?.references?.[0]?.instance_id ?? fulfillment.status?.id;
                 const order = response_map[id];
                 if (order && fulfillment.status?.code !== 200) {
                   order.status = fulfillment.status;
@@ -2464,7 +2464,7 @@ export class OrderingService
           return item;
         }
       );
-      
+
       const created = valids?.length ? await this.fulfillment_service.create(
         {
           items: valids.map(item => item.payload),
