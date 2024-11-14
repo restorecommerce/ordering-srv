@@ -1,3 +1,5 @@
+/* eslint-disable no-unsafe-optional-chaining */
+/* eslint-disable @typescript-eslint/no-non-null-asserted-optional-chain */
 import * as uuid from 'uuid';
 import { BigNumber } from 'bignumber.js';
 import { Logger } from '@restorecommerce/logger';
@@ -1015,7 +1017,7 @@ export class OrderingService
     subject?: Subject,
     context?: any,
   ): Promise<FulfillmentMap> {
-    if (!!this.fulfillment_service) return {};
+    if (this.fulfillment_service) return {};
     order_ids = [...new Set<string | undefined>(order_ids ?? [])];
 
     if (order_ids.length > 1000) {
@@ -2637,7 +2639,7 @@ export class OrderingService
           };
         }
 
-        for (let section of item.sections!) {
+        for (const section of item.sections!) {
           const order = order_map[section.order_id!];
 
           if (order?.status?.code !== 200) {

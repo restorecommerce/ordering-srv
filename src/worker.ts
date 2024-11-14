@@ -210,7 +210,7 @@ export class Worker {
         ).map(
           ([eventName, handler]) => {
             const handle = this.handlers[handler];
-            if (!!handle) {
+            if (handle) {
               this.serviceActions?.set(eventName as string, handle);
               return topic.on(
                 eventName as string,
