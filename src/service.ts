@@ -88,10 +88,10 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment.js';
 import {
   FulfillmentProductServiceDefinition,
-  PackingSolutionQuery,
-  PackingSolutionQueryList,
-  PackingSolutionListResponse,
-  PackingSolutionResponse,
+  FulfillmentSolutionQuery,
+  FulfillmentSolutionQueryList,
+  FulfillmentSolutionListResponse,
+  FulfillmentSolutionResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment_product.js';
 import {
   FilterOp_Operator,
@@ -239,7 +239,7 @@ export type OrganizationMap = { [key: string]: OrganizationResponse };
 export type ContactPointMap = { [key: string]: ContactPointResponse };
 export type AddressMap = { [key: string]: AddressResponse };
 export type CountryMap = { [key: string]: CountryResponse };
-export type PackingSolutionMap = { [key: string]: PackingSolutionResponse };
+export type FulfillmentSolutionMap = { [key: string]: FulfillmentSolutionResponse };
 export type PositionMap = { [key: string]: Position };
 export type StatusMap = { [key: string]: Status };
 export type OperationStatusMap = { [key: string]: OperationStatus };
@@ -1933,9 +1933,6 @@ export class OrderingService
           {
             items: orders.items?.filter(
               order => order.status?.code === 200
-                || order.payload?.packaging_preferences?.options?.find(
-                  att => att.id === this.urns.disableInvoice
-                )?.value === 'true'
             ).map(
               order => ({
                 sections: [
@@ -2135,12 +2132,12 @@ export class OrderingService
     return super.delete(request, context);
   }
 
-  private async getPackingSolution(
+  private async getFulfillmentSolution(
     request: FulfillmentRequestList,
     context?: any,
     orders?: OrderMap,
     products?: ProductMap,
-  ): Promise<PackingSolutionListResponse> {
+  ): Promise<FulfillmentSolutionListResponse> {
     const response_map = request.items?.reduce(
       (a, b) => {
         a[b.order_id!] = {
@@ -2151,7 +2148,7 @@ export class OrderingService
         };
         return a;
       },
-      {} as { [key: string]: PackingSolutionResponse }
+      {} as { [key: string]: FulfillmentSolutionResponse }
     ) ?? {};
 
     orders ??= await this.getOrderMap(
@@ -2210,7 +2207,7 @@ export class OrderingService
           );
         }
 
-        const query: PackingSolutionQuery = {
+        const query: FulfillmentSolutionQuery = {
           reference: {
             instance_type: this.instanceType,
             instance_id: order.payload.id,
@@ -2231,7 +2228,7 @@ export class OrderingService
       items,
       total_count: items?.length,
       subject: request.subject
-    } as PackingSolutionQueryList;
+    } as FulfillmentSolutionQueryList;
     const solutions = await this.fulfillment_product_service?.find(
       query,
       context
@@ -2264,12 +2261,12 @@ export class OrderingService
     database: 'arangoDB',
     useCache: true,
   })
-  public async queryPackingSolution(
+  public async queryFulfillmentSolution(
     request: FulfillmentRequestList,
     context?: any,
-  ): Promise<PackingSolutionListResponse> {
+  ): Promise<FulfillmentSolutionListResponse> {
     try {
-      return await this.getPackingSolution(request, context);
+      return await this.getFulfillmentSolution(request, context);
     }
     catch (e) {
       return this.catchOperationError(e);
@@ -2287,7 +2284,7 @@ export class OrderingService
       context
     ) ?? {};
 
-    const solutions = await this.getPackingSolution(
+    const solutions = await this.getFulfillmentSolution(
       request,
       context,
       orders,
@@ -2299,7 +2296,7 @@ export class OrderingService
               a[b.reference?.instance_id ?? b.status?.id] = b;
               return a;
             },
-            {} as PackingSolutionMap
+            {} as FulfillmentSolutionMap
           );
         }
         else {

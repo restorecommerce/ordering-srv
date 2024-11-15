@@ -74,7 +74,7 @@
         "messageObject": "io.restorecommerce.order.Order"
       },
       "orderDeleted": {
-        "messageObject": "io.restorecommerce.order.Deleted"
+        "messageObject": "io.restorecommerce.resourcebase.Deleted"
       },
       "orderFailed": {
         "messageObject": "io.restorecommerce.order.OrderResponse"
