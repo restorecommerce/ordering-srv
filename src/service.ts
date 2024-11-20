@@ -1,6 +1,3 @@
-/* eslint-disable no-unsafe-optional-chaining */
-/* eslint-disable @typescript-eslint/no-non-null-asserted-optional-chain */
-import * as uuid from 'uuid';
 import { BigNumber } from 'bignumber.js';
 import { Logger } from '@restorecommerce/logger';
 import { ServiceConfig } from '@restorecommerce/service-config';
@@ -19,11 +16,11 @@ import {
   DefaultACSClientContextFactory,
   Operation,
   DefaultResourceFactory,
-  // DefaultMetaDataInjector,
+  DefaultMetaDataInjector,
   access_controlled_function,
   access_controlled_service,
   injects_meta_data,
-  injects_meta_data as resolves_subject,
+  resolves_subject,
 } from '@restorecommerce/acs-client';
 import {
   ResourcesAPIBase,
@@ -101,7 +98,6 @@ import {
   DeleteRequest,
   Filter_ValueType,
   ReadRequest,
-  ResourceList
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import {
   OperationStatus,
@@ -143,91 +139,6 @@ export const toObjectMap = <T extends object>(items: any[]) => items.reduce(
   },
   {} as T
 ) ?? {};
-
-export const DefaultSubjectResolver = async <T extends ResourceList>(
-  self: any,
-  request: T,
-  ...args: any
-): Promise<T> => {
-  const subject = request?.subject;
-  if (subject?.id) {
-    delete subject.id;
-  }
-  if (subject?.token) {
-    const user = await self.__userService.findByToken({ token: subject.token });
-    if (user?.payload?.id) {
-      subject.id = user.payload.id;
-    }
-  }
-  return request;
-};
-
-export const DefaultMetaDataInjector = async <T extends ResourceList>(
-  self: OrderingService,
-  request: T,
-  ...args: any
-): Promise<T> => {
-  const urns = self.cfg.get('authorization:urns');
-  const ids = [...new Set(
-    request.items?.map(
-      (item) => item.id
-    ).filter(
-      id => id
-    )
-  )
-  ];
-  const meta_map = await self.read({
-    filters: [{
-      filters: [{
-        field: 'id',
-        operation: Filter_Operation.in,
-        value: JSON.stringify(ids),
-        type: Filter_ValueType.ARRAY,
-        filters: [],
-      }]
-    }],
-    limit: ids.length,
-    subject: request.subject
-  }).then(
-    (response: OrderListResponse) => new Map(response.items?.filter(
-      item => item.payload
-    ).map(
-      item => [item.payload.id, item.payload.meta]
-    ))
-  );
-
-  request.items?.forEach((item) => {
-    if (!item.id?.length) {
-      item.id = uuid.v4().replace(/-/g, '');
-    }
-
-    if (!item.meta?.owners?.length) {
-      item.meta = {
-        ...meta_map.get(item.id),
-        ...item.meta,
-        owners: [
-          request.subject?.scope ? {
-            id: urns.ownerIndicatoryEntity,
-            value: urns.organization, // to be passed here to change
-            attributes: [{
-              id: urns.ownerInstance,
-              value: request.subject.scope
-            }],
-          } : undefined,
-          request.subject?.id ? {
-            id: urns.ownerIndicatoryEntity,
-            value: urns.user,
-            attributes: [{
-              id: urns.ownerInstance,
-              value: request.subject.id
-            }],
-          } : undefined,
-        ].filter(i => !!i)
-      };
-    }
-  });
-  return request;
-};
 
 export type OrderMap = { [key: string]: OrderResponse };
 export type ProductMap = { [key: string]: ProductResponse };
@@ -273,7 +184,7 @@ export class OrderingService
     const ids = request.ids ?? request.items?.map(
       (item: Order & FulfillmentRequest & OrderingInvoiceRequest) => item.id ?? item.order_id
     ) ?? [] as string[];
-    const resources = await self.getOrdersById(ids, request?.subject!, context);
+    const resources = await self.getOrdersById(ids, request.subject!, context);
     return {
       ...context,
       subject: request.subject,
@@ -372,7 +283,7 @@ export class OrderingService
       message: 'SUCCESS',
     },
     PARTIAL: {
-      code: 208,
+      code: 207,
       message: 'Patrial execution including errors!',
     },
     LIMIT_EXHAUSTED: {
@@ -385,7 +296,7 @@ export class OrderingService
     },
     NO_ITEM: {
       code: 400,
-      message: 'No item in query!',
+      message: 'No {entity} in query!',
     },
     ITEM_NOT_FOUND: {
       code: 404,
@@ -431,10 +342,6 @@ export class OrderingService
     return this.name;
   }
 
-  get collectionName() {
-    return this.resourceapi.resourceName;
-  }
-
   get instanceType() {
     return this.urns.instanceType;
   }
@@ -456,10 +363,10 @@ export class OrderingService
         undefined,
         undefined,
         logger,
+        cfg.get('database:main:entities:0') ?? 'order',
       ),
-      !!cfg.get('events:enableEvents')
+      cfg.get('events:enableEvents')?.toString() === 'true',
     );
-    this.resourceapi.logger = logger;
 
     this.urns = {
       ...this.urns,
@@ -721,7 +628,7 @@ export class OrderingService
         if (response.operation_status?.code === 200) {
           return response?.items?.reduce(
             (a, b) => {
-              a[b.payload?.id!] = b as OrderResponse;
+              a[b.payload.id] = b as OrderResponse;
               return a;
             },
             {} as OrderMap
@@ -774,7 +681,7 @@ export class OrderingService
           }
           else {
             response.items?.forEach(
-              item => products[item.payload?.id!] = item
+              item => products[item.payload?.id] = item
             );
           }
         }
@@ -788,7 +695,11 @@ export class OrderingService
     nature: ProductNature,
     variant_id: string,
   ): ProductVariant {
-    const variant = nature?.variants?.find(v => v.id === variant_id);
+    const variant = nature?.templates?.find(
+      v => v.id === variant_id
+    ) ?? nature?.variants?.find(
+      v => v.id === variant_id
+    );
     if (variant?.parent_variant_id) {
       const template = this.mergeProductVariantRecursive(
         nature, variant.parent_variant_id
@@ -812,7 +723,7 @@ export class OrderingService
     const main = products[product_id]?.payload;
     if (main?.product?.physical) {
       const variant = this.mergeProductVariantRecursive(
-        main.product?.physical,
+        main.product.physical,
         variant_id
       );
       if (!variant) {
@@ -858,7 +769,7 @@ export class OrderingService
   };
 
   private async getProductMap(
-    orders: (Order | undefined)[] | undefined,
+    orders: Order[],
     subject?: Subject,
     context?: any,
   ): Promise<ProductMap> {
@@ -867,7 +778,7 @@ export class OrderingService
         (item) => item.product_id!
       ) ?? []
     ).filter(
-      (id) => !!id
+      (id) => id
     )).values()];
 
     if (!product_ids.length) {
@@ -919,7 +830,7 @@ export class OrderingService
         else {
           return response.items!.reduce(
             (a, b) => {
-              a[b.payload?.id!] = b;
+              a[b.payload.id] = b;
               return a;
             }, {} as ProductMap
           );
@@ -1002,7 +913,7 @@ export class OrderingService
         else {
           return response.items!.reduce(
             (a, b) => {
-              a[b.payload?.id!] = b.payload!;
+              a[b.payload.id] = b.payload;
               return a;
             },
             {} as RatioedTaxMap
@@ -1053,11 +964,11 @@ export class OrderingService
         if (response.operation_status?.code === 200) {
           return response.items?.reduce(
             (a, b) => {
-              if (b.payload?.id! in a) {
-                a[b.payload?.id!].push(b);
+              if (b.payload.id in a) {
+                a[b.payload.id].push(b);
               }
               else {
-                a[b.payload?.id!] = [b];
+                a[b.payload.id] = [b];
               }
               return a;
             }, {} as FulfillmentMap
@@ -1294,7 +1205,7 @@ export class OrderingService
         return await Promise.all(
           main?.bundle?.products?.flatMap(
             p => getTaxesRecursive(
-              product_map[p?.product_id!]?.payload!,
+              product_map[p?.product_id]?.payload,
               (p.price_ratio ?? 0) * price_ratio
             )
           ) ?? []
@@ -1434,7 +1345,7 @@ export class OrderingService
                 order.id,
                 'Country',
               );
-              const nature = (product.payload!.product?.physical ?? product.payload!.product?.virtual) as ProductNature;
+              const nature = product.payload!.product?.physical ?? product.payload!.product?.virtual;
               const variant = this.mergeProductVariantRecursive(nature, item.variant_id);
               const taxes = await getTaxesRecursive(product.payload!);
               const unit_price = product.payload!.bundle ? product.payload!.bundle?.price : variant?.price;
@@ -1478,18 +1389,18 @@ export class OrderingService
 
         order.total_amounts = Object.values(order.items?.reduce(
           (amounts, item) => {
-            const amount = amounts[item.amount?.currency_id!];
+            const amount = amounts[item.amount?.currency_id];
             if (amount) {
               amount.gross = amount.gross.plus(item.amount.gross!);
-              amount.net = amount.net.plus(item.amount?.net!);
-              amount.vats.push(...item.amount?.vats!);
+              amount.net = amount.net.plus(item.amount?.net);
+              amount.vats.push(...(item.amount?.vats ?? []));
             }
             else {
-              amounts[item.amount.currency_id!] = {
+              amounts[item.amount.currency_id] = {
                 currency_id: item.amount.currency_id,
-                gross: new BigNumber(item.amount.gross!),
-                net: new BigNumber(item.amount.net!),
-                vats: [...item.amount.vats],
+                gross: new BigNumber(item.amount.gross),
+                net: new BigNumber(item.amount.net),
+                vats: [...(item.amount?.vats ?? [])],
               };
             }
             return amounts;
@@ -1665,12 +1576,12 @@ export class OrderingService
       if (response.operation_status?.code === 200) {
         response.items?.forEach(
           (item: OrderResponse) => {
-            responseMap[item.payload?.id ?? item.status?.id!] = item;
+            responseMap[item.payload?.id ?? item.status?.id] = item;
             if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
               this.topic.emit(this.emitters['INVALID'], item);
             }
-            else if (item?.payload?.order_state! in this.emitters) {
-              this.topic.emit(this.emitters[item.payload?.order_state!], item.payload);
+            else if (item?.payload?.order_state in this.emitters) {
+              this.topic.emit(this.emitters[item.payload?.order_state], item.payload);
             }
           }
         );
@@ -1690,9 +1601,7 @@ export class OrderingService
     }
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
+  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.READ,
     operation: Operation.whatIsAllowed,
@@ -1708,12 +1617,8 @@ export class OrderingService
     return super.read(request, context);
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
-  @injects_meta_data(
-    DefaultMetaDataInjector
-  )
+  @resolves_subject()
+  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.CREATE,
     operation: Operation.isAllowed,
@@ -1736,12 +1641,8 @@ export class OrderingService
     return super.create(request, context);
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
-  @injects_meta_data(
-    DefaultMetaDataInjector
-  )
+  @resolves_subject()
+  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
@@ -1757,12 +1658,8 @@ export class OrderingService
     return super.update(request, context);
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
-  @injects_meta_data(
-    DefaultMetaDataInjector
-  )
+  @resolves_subject()
+  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.MODIFY,
     operation: Operation.isAllowed,
@@ -1778,12 +1675,8 @@ export class OrderingService
     return super.upsert(request, context);
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
-  @injects_meta_data(
-    DefaultMetaDataInjector
-  )
+  @resolves_subject()
+  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -1809,12 +1702,8 @@ export class OrderingService
     }
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
-  @injects_meta_data(
-    DefaultMetaDataInjector
-  )
+  @resolves_subject()
+  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -1865,7 +1754,7 @@ export class OrderingService
 
       const response_map = request.items?.reduce(
         (a, b) => {
-          a[b.id!] = {};
+          a[b.id] = {};
           return a;
         },
         {} as { [key: string]: OrderResponse }
@@ -1879,14 +1768,14 @@ export class OrderingService
         response => ({
           items: response.items?.filter(
             (item: OrderResponse) => {
-              if (item.status?.id! in response_map) {
-                response_map[item.status?.id!] = item;
+              if (item.status?.id in response_map) {
+                response_map[item.status?.id] = item;
               }
               return item.status?.code === 200;
             }
           ).map(
             item => {
-              item.payload!.order_state = OrderState.PENDING;
+              item.payload.order_state = OrderState.PENDING;
               return item;
             }
           ),
@@ -1952,7 +1841,7 @@ export class OrderingService
               invoice => {
                 invoice.payload?.references?.forEach(
                   reference => {
-                    const order = response_map[reference?.instance_id!];
+                    const order = response_map[reference?.instance_id];
                     if (invoice.status?.code !== 200 && order) {
                       order.status = {
                         ...invoice.status,
@@ -1973,16 +1862,16 @@ export class OrderingService
       const failed_order_ids = orders.items?.filter(
         order => order.status?.code !== 200
       ).map(
-        order => order.payload?.id ?? order.status?.id!
+        order => order.payload?.id ?? order.status?.id
       ) ?? [];
 
       if (this.cleanup_fulfillments_post_submit) {
         const failed_fulfillment_ids = response.fulfillments?.filter(
           fulfillment => fulfillment.payload?.references?.some(
-            reference => failed_order_ids.includes(reference?.instance_id!)
+            reference => failed_order_ids.includes(reference?.instance_id)
           )
         ).map(
-          fulfillment => fulfillment.payload?.id!
+          fulfillment => fulfillment.payload.id
         );
 
         if (failed_fulfillment_ids?.length) {
@@ -1999,10 +1888,10 @@ export class OrderingService
       if (this.cleanup_invoices_post_submit) {
         const failed_invoice_ids = response.invoices?.filter(
           invoice => invoice.payload?.references?.find(
-            reference => failed_order_ids.includes(reference?.instance_id!)
+            reference => failed_order_ids.includes(reference?.instance_id)
           )
         ).map(
-          invoice => invoice.payload?.id!
+          invoice => invoice.payload.id
         );
 
         if (failed_invoice_ids?.length) {
@@ -2054,8 +1943,8 @@ export class OrderingService
           if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
             this.topic.emit(this.emitters['INVALID'], item);
           }
-          else if (item.payload?.order_state! in this.emitters) {
-            this.topic.emit(this.emitters[item.payload.order_state!], item.payload);
+          else if (item.payload?.order_state in this.emitters) {
+            this.topic.emit(this.emitters[item.payload.order_state], item.payload);
           }
         }
       );
@@ -2068,9 +1957,7 @@ export class OrderingService
     }
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
+  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -2091,9 +1978,7 @@ export class OrderingService
     );
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
+  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -2114,9 +1999,7 @@ export class OrderingService
     );
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
+  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.DELETE,
     operation: Operation.isAllowed,
@@ -2140,7 +2023,7 @@ export class OrderingService
   ): Promise<FulfillmentSolutionListResponse> {
     const response_map = request.items?.reduce(
       (a, b) => {
-        a[b.order_id!] = {
+        a[b.order_id] = {
           reference: {
             instance_type: this.instanceType,
             instance_id: b.order_id,
@@ -2152,7 +2035,7 @@ export class OrderingService
     ) ?? {};
 
     orders ??= await this.getOrderMap(
-      request.items?.map(item => item.order_id!),
+      request.items?.map(item => item.order_id),
       request.subject,
       context
     ) ?? {};
@@ -2165,8 +2048,8 @@ export class OrderingService
 
     const items = request.items?.filter(
       item => {
-        const response = response_map[item.order_id!];
-        const order = orders?.[item.order_id!];
+        const response = response_map[item.order_id];
+        const order = orders?.[item.order_id];
 
         if (!order) {
           response.status = this.createStatusCode(
@@ -2178,7 +2061,7 @@ export class OrderingService
           return false;
         }
 
-        if (order.status?.code! !== 200) {
+        if (order.status?.code !== 200) {
           response.status = order.status;
           return false;
         }
@@ -2187,14 +2070,14 @@ export class OrderingService
       }
     ).map(
       item => {
-        const response = response_map[item.order_id!];
-        const order = orders?.[item.order_id!];
+        const response = response_map[item.order_id];
+        const order = orders?.[item.order_id];
         const items = order.payload?.items?.flatMap(
           item => this.flatMapProductToFulfillmentItem(
-            products!,
-            item.product_id!,
+            products,
+            item.product_id,
             item.variant_id,
-            item.quantity
+            item.quantity,
           )
         );
 
@@ -2250,9 +2133,7 @@ export class OrderingService
     };
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
+  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.READ,
     operation: Operation.whatIsAllowed,
@@ -2279,7 +2160,7 @@ export class OrderingService
     orders?: OrderMap,
   ): Promise<FulfillmentResponse[]> {
     orders ??= await this.getOrderMap(
-      request.items?.map(item => item.order_id!),
+      request.items?.map(item => item.order_id),
       request.subject,
       context
     ) ?? {};
@@ -2385,6 +2266,7 @@ export class OrderingService
         }
       );
 
+      console.log('Valids:', valids);
       const evaluated = valids.length ? await this.fulfillment_service.evaluate(
         {
           items: valids.map(item => item.payload),
@@ -2510,9 +2392,56 @@ export class OrderingService
     }
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
+  @resolves_subject()
+  @injects_meta_data()
+  @access_controlled_function({
+    action: AuthZAction.EXECUTE,
+    operation: Operation.isAllowed,
+    context: DefaultACSClientContextFactory,
+    resource: DefaultResourceFactory('execution.evaluateFulfillment'),
+    database: 'arangoDB',
+    useCache: true,
+  })
+  public async evaluateFulfillment(
+    request: OrderList,
+    context?: any
+  ): Promise<FulfillmentListResponse> {
+    const order_map = request?.items?.reduce(
+      (a, b) => {
+        a[b.id] = { 
+          payload: b,
+          status: this.createStatusCode(
+            b.id,
+            'order',
+            this.status_codes.OK,
+            b.id
+          ),
+        } as OrderResponse;
+        return a;
+      },
+      {} as OrderMap
+    ) ?? {};
+    const fulfillment_request: FulfillmentRequestList = {
+      ...request,
+      items: request.items?.map(
+        item => ({
+          order_id: item.id,
+        })
+      )
+    };
+    return this._evaluateFulfillment(
+      fulfillment_request,
+      context,
+      order_map
+    ).then(
+      resp => ({
+        ...resp,
+        status: resp.items?.map(item => item.status)
+      })
+    );
+  }
+
+  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -2528,9 +2457,7 @@ export class OrderingService
     return this._createFulfillment(request, context);
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
+  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -2559,8 +2486,8 @@ export class OrderingService
         prototypes => {
           return prototypes.filter(
             item => {
-              if (item.status?.id! in responseMap) {
-                responseMap[item.status?.id!].status = item.status as Status;
+              if (item.status?.id in responseMap) {
+                responseMap[item.status?.id].status = item.status as Status;
               }
               return item.status?.code === 200;
             }
@@ -2623,7 +2550,7 @@ export class OrderingService
 
     return request.items?.map(
       item => {
-        const master = order_map[item.sections?.[0]?.order_id!];
+        const master = order_map[item.sections?.[0]?.order_id];
         if (master?.status?.code !== 200) {
           return {
             payload: undefined,
@@ -2708,14 +2635,14 @@ export class OrderingService
                 const fulfillment_items: Parcel[] = Object.values((
                   section.fulfillment_mode === FulfillmentInvoiceMode.INCLUDE && (
                     section.selected_fulfillments?.flatMap(
-                      selection => fulfillment_map[section?.order_id!]?.find(
+                      selection => fulfillment_map[section?.order_id]?.find(
                         fulfillment => fulfillment.payload?.id === selection?.fulfillment_id
                       )?.payload?.packaging?.parcels?.filter(
                         parcel =>
                           selection?.selected_parcels?.length === 0 ||
-                          parcel.id! in selection.selected_parcels!
+                          parcel.id in selection.selected_parcels
                       )
-                    ) ?? fulfillment_map[section.order_id!]?.flatMap(
+                    ) ?? fulfillment_map[section.order_id]?.flatMap(
                       fulfillment => fulfillment.payload?.packaging?.parcels
                     )
                   ) || []
@@ -2724,10 +2651,10 @@ export class OrderingService
                     const id = `${b?.product_id}___${b?.variant_id}`;
                     const c = a[id];
                     if (c) {
-                      c.quantity! += 1;
-                      c.amount!.gross! += b?.amount?.gross!;
-                      c.amount!.net! += b?.amount?.net!;
-                      c.amount!.vats!.push(...b?.amount?.vats!);
+                      c.quantity += 1;
+                      c.amount.gross += b?.amount?.gross;
+                      c.amount.net += b?.amount?.net;
+                      c.amount.vats.push(...(b?.amount?.vats ?? []));
                     }
                     else {
                       a[id] = {
@@ -2790,9 +2717,7 @@ export class OrderingService
     ) ?? [];
   }
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
+  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.CREATE,
     operation: Operation.isAllowed,
@@ -2833,7 +2758,7 @@ export class OrderingService
           ...response.items!,
           ...invalids
         ],
-        total_count: response.items?.length! + invalids.length,
+        total_count: response.items?.length + invalids.length,
         operation_status: invalids.length
           ? this.createOperationStatusCode(
             this.operation_status_codes.PARTIAL,
@@ -2847,9 +2772,7 @@ export class OrderingService
     }
   };
 
-  @resolves_subject(
-    DefaultSubjectResolver
-  )
+  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,

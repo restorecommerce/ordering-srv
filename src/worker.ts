@@ -21,6 +21,9 @@ import {
   CommandInterfaceServiceDefinition,
   protoMetadata as CommandInterfaceMeta,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/commandinterface.js';
+import {
+  protoMetadata as ResourceBaseMeta,
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import { ServiceConfig, createServiceConfig } from '@restorecommerce/service-config';
 import { createLogger } from '@restorecommerce/logger';
 import { OrderingService } from './service.js';
@@ -36,6 +39,7 @@ import { initAuthZ } from '@restorecommerce/acs-client';
 registerProtoMeta(
   OrderMeta,
   CommandInterfaceMeta,
+  ResourceBaseMeta,
 );
 
 export type Handler = (msg: any, context: any, config: any, eventName: string) => any;
@@ -287,8 +291,9 @@ export class Worker {
 
     // start server
     await initAuthZ(cfg);
+    logger.debug('Starting server...');
     await this.server.start();
-    this.logger.info('server started successfully');
+    logger.info('Server started and ready to use.');
   }
 
   async stop(): Promise<any> {
