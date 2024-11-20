@@ -2265,8 +2265,7 @@ export class OrderingService
           return item;
         }
       );
-
-      console.log('Valids:', valids);
+      
       const evaluated = valids.length ? await this.fulfillment_service.evaluate(
         {
           items: valids.map(item => item.payload),
