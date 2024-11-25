@@ -69,6 +69,9 @@ import {
   ContactPointServiceDefinition, ContactPointResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/contact_point.js';
 import {
+  CurrencyServiceDefinition, CurrencyResponse
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/currency.js';
+import {
   AddressServiceDefinition, AddressResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/address.js';
 import {
@@ -145,6 +148,7 @@ export type ProductMap = { [key: string]: ProductResponse };
 export type FulfillmentMap = { [key: string]: FulfillmentResponse[] };
 export type RatioedTaxMap = { [key: string]: RatioedTax };
 export type CustomerMap = { [key: string]: CustomerResponse };
+export type CurrencyMap = { [key: string]: CurrencyResponse };
 export type ShopMap = { [key: string]: ShopResponse };
 export type OrganizationMap = { [key: string]: OrganizationResponse };
 export type ContactPointMap = { [key: string]: ContactPointResponse };
@@ -167,6 +171,7 @@ export type CRUDClient = Client<ProductServiceDefinition>
 | Client<CountryServiceDefinition>
 | Client<FulfillmentServiceDefinition>
 | Client<FulfillmentProductServiceDefinition>
+| Client<CurrencyServiceDefinition>
 | Client<InvoiceServiceDefinition>;
 
 const CREATE_FULFILLMENT = 'createFulfillment';
@@ -315,6 +320,7 @@ export class OrderingService
   protected readonly contact_point_service: Client<ContactPointServiceDefinition>;
   protected readonly address_service: Client<AddressServiceDefinition>;
   protected readonly country_service: Client<CountryServiceDefinition>;
+  protected readonly currency_service: Client<CurrencyServiceDefinition>;
   protected readonly fulfillment_service?: Client<FulfillmentServiceDefinition>;
   protected readonly fulfillment_product_service?: Client<FulfillmentProductServiceDefinition>;
   protected readonly invoice_service?: Client<InvoiceServiceDefinition>;
@@ -451,6 +457,15 @@ export class OrderingService
       } as GrpcClientConfig,
       AddressServiceDefinition,
       createChannel(cfg.get('client:address:address'))
+    );
+
+    this.currency_service = createClient(
+      {
+        ...cfg.get('client:currency'),
+        logger
+      } as GrpcClientConfig,
+      CurrencyServiceDefinition,
+      createChannel(cfg.get('client:currency:address'))
     );
 
     this.country_service = createClient(
@@ -700,6 +715,14 @@ export class OrderingService
     ) ?? nature?.variants?.find(
       v => v.id === variant_id
     );
+    if (!variant) {
+      throw this.createStatusCode(
+        undefined,
+        'Variant',
+        this.status_codes.ITEM_NOT_FOUND,
+        variant_id,
+      );
+    }
     if (variant?.parent_variant_id) {
       const template = this.mergeProductVariantRecursive(
         nature, variant.parent_variant_id
@@ -982,13 +1005,13 @@ export class OrderingService
   }
 
   private async get<T>(
-    ids: (string | undefined)[],
+    ids: string[],
     service: CRUDClient,
     entity: string,
     subject?: Subject,
     context?: any,
   ): Promise<T> {
-    ids = [...new Set<string | undefined>(ids?.filter(
+    ids = [...new Set<string>(ids?.filter(
       id => id
     ))];
 
@@ -999,7 +1022,7 @@ export class OrderingService
       );
     }
 
-    if (!(ids?.length > 0)) {
+    if (!(ids?.length !== 0)) {
       return {} as T;
     }
 
@@ -1024,10 +1047,10 @@ export class OrderingService
         if (response.operation_status?.code !== 200) {
           throw response.operation_status;
         }
-        else if (response.items?.length < ids.length) {
+        else if (!response.items?.length || response.items?.length < ids.length) {
           const found = response.items?.map((item: any) => item.payload?.id);
           const missing = ids.filter(
-            id => !found.includes(id)
+            id => !found?.includes(id)
           );
           throw this.createOperationStatusCode(
             this.operation_status_codes.ITEM_NOT_FOUND,
@@ -1106,6 +1129,26 @@ export class OrderingService
       subject,
       context
     );
+    const currency_map = await this.get<CurrencyMap>(
+      Object.values(
+        product_map ?? {}
+      ).flatMap(
+        product => (
+          product.payload?.bundle?.price?.currency_id
+          ?? (
+            product.payload?.product?.physical?.variants
+            ?? product.payload?.product?.virtual?.variants
+            ?? product.payload?.product?.service?.variants
+          )?.map(
+            variant => variant?.price?.currency_id
+          )
+        ),
+      ),
+      this.currency_service,
+      'currencies',
+      subject,
+      context,
+    );
     const customer_map = await this.get<CustomerMap>(
       order_list.items?.map(item => item.customer_id) ?? [],
       this.customer_service,
@@ -1123,12 +1166,12 @@ export class OrderingService
     const organization_map = await this.get<OrganizationMap>(
       [
         ...Object.values(
-          shop_map
+          shop_map ?? {}
         ).map(
           item => item.payload?.organization_id
         ),
         ...Object.values(
-          customer_map
+          customer_map ?? {}
         ).map(
           item => item.payload?.commercial?.organization_id
             ?? item.payload?.public_sector?.organization_id
@@ -1142,12 +1185,12 @@ export class OrderingService
     const contact_point_map = await this.get<ContactPointMap>(
       [
         ...Object.values(
-          organization_map
+          organization_map ?? {}
         ).flatMap(
           item => item.payload?.contact_point_ids
         ),
         ...Object.values(
-          customer_map
+          customer_map ?? {}
         ).flatMap(
           item => item.payload?.private?.contact_point_ids
         ),
@@ -1159,7 +1202,7 @@ export class OrderingService
     );
     const address_map = await this.get<AddressMap>(
       Object.values(
-        contact_point_map
+        contact_point_map ?? {}
       ).map(
         item => item.payload?.physical_address_id
       ),
@@ -1171,12 +1214,12 @@ export class OrderingService
     const country_map = await this.get<CountryMap>(
       [
         ...Object.values(
-          tax_map
+          tax_map ?? {}
         ).map(
           t => t.country_id
         ),
         ...Object.values(
-          address_map
+          address_map ?? {}
         ).map(
           item => item.payload?.country_id
         ),
@@ -1347,9 +1390,18 @@ export class OrderingService
               );
               const nature = product.payload!.product?.physical ?? product.payload!.product?.virtual;
               const variant = this.mergeProductVariantRecursive(nature, item.variant_id);
+              const currency = await this.getById(
+                variant.price?.currency_id,
+                currency_map,
+                order.id,
+                'Currency',
+              );
+              const precision = currency?.payload?.precision ?? 2;
               const taxes = await getTaxesRecursive(product.payload!);
               const unit_price = product.payload!.bundle ? product.payload!.bundle?.price : variant?.price;
-              const gross = new BigNumber(unit_price?.sale ? unit_price?.sale_price ?? 0 : unit_price?.regular_price ?? 0).multipliedBy(item.quantity ?? 0);
+              const gross = new BigNumber(
+                unit_price?.sale ? unit_price?.sale_price ?? 0 : unit_price?.regular_price ?? 0
+              ).multipliedBy(item.quantity ?? 0);
               const vats = taxes.filter(
                 t => (
                   t.country_id === country?.id &&
@@ -1364,15 +1416,21 @@ export class OrderingService
               ).map(
                 (t): VAT => ({
                   tax_id: t.id,
-                  vat: gross.multipliedBy(t.rate!).multipliedBy(t.tax_ratio!).decimalPlaces(2).toNumber()
+                  vat: gross.multipliedBy(
+                    t.rate!
+                  ).multipliedBy(
+                    t.tax_ratio!
+                  ).decimalPlaces(
+                    precision
+                  ).toNumber()
                 })
               );
               const net = vats.reduce((a, b) => a.plus(b.vat!), gross);
               item.unit_price = unit_price;
               item.amount = {
                 currency_id: unit_price.currency_id,
-                gross: gross.decimalPlaces(2).toNumber(),
-                net: net.decimalPlaces(2).toNumber(),
+                gross: gross.decimalPlaces(precision).toNumber(),
+                net: net.decimalPlaces(precision).toNumber(),
                 vats,
               };
             }

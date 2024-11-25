@@ -192,6 +192,9 @@
     "country": {
       "address": "localhost:50053"
     },
+    "currency": {
+      "address": "localhost:50053"
+    },
     "tax": {
       "address": "localhost:50053"
     },
