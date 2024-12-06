@@ -101,6 +101,8 @@ import {
   DeleteRequest,
   Filter_ValueType,
   ReadRequest,
+  Resource,
+  ResourceResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import {
   OperationStatus,
@@ -118,61 +120,7 @@ import {
   VAT
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/amount.js';
 import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth.js';
-
-export type BigVAT = {
-  tax_id: string;
-  vat: BigNumber;
-};
-
-export type BigAmount = {
-  currency_id: string;
-  gross: BigNumber;
-  net: BigNumber;
-  vats: VAT[];
-};
-
-export type RatioedTax = Tax & {
-  tax_ratio?: number;
-};
-
-export const toObjectMap = <T extends object>(items: any[]) => items.reduce(
-  (a, b) => {
-    a[b.id ?? b.payload?.id] = b;
-    return a;
-  },
-  {} as T
-) ?? {};
-
-export type OrderMap = { [key: string]: OrderResponse };
-export type ProductMap = { [key: string]: ProductResponse };
-export type FulfillmentMap = { [key: string]: FulfillmentResponse[] };
-export type RatioedTaxMap = { [key: string]: RatioedTax };
-export type CustomerMap = { [key: string]: CustomerResponse };
-export type CurrencyMap = { [key: string]: CurrencyResponse };
-export type ShopMap = { [key: string]: ShopResponse };
-export type OrganizationMap = { [key: string]: OrganizationResponse };
-export type ContactPointMap = { [key: string]: ContactPointResponse };
-export type AddressMap = { [key: string]: AddressResponse };
-export type CountryMap = { [key: string]: CountryResponse };
-export type FulfillmentSolutionMap = { [key: string]: FulfillmentSolutionResponse };
-export type PositionMap = { [key: string]: Position };
-export type StatusMap = { [key: string]: Status };
-export type OperationStatusMap = { [key: string]: OperationStatus };
-export type VATMap = { [key: string]: VAT };
-export type ProductNature = PhysicalProduct & VirtualProduct & ServiceProduct;
-export type ProductVariant = PhysicalVariant & VirtualVariant & ServiceVariant;
-export type CRUDClient = Client<ProductServiceDefinition>
-| Client<TaxServiceDefinition>
-| Client<CustomerServiceDefinition>
-| Client<ShopServiceDefinition>
-| Client<OrganizationServiceDefinition>
-| Client<ContactPointServiceDefinition>
-| Client<AddressServiceDefinition>
-| Client<CountryServiceDefinition>
-| Client<FulfillmentServiceDefinition>
-| Client<FulfillmentProductServiceDefinition>
-| Client<CurrencyServiceDefinition>
-| Client<InvoiceServiceDefinition>;
+import { AddressMap, BigAmount, BigVAT, ContactPointMap, CountryMap, CRUDClient, CurrencyMap, CustomerMap, DefaultUrns, FulfillmentMap, FulfillmentSolutionMap, OrderMap, OrganizationMap, PositionMap, ProductMap, ProductNature, ProductVariant, RatioedTax, RatioedTaxMap, ShopMap, toObjectMap, VATMap } from './utils.js';
 
 const CREATE_FULFILLMENT = 'createFulfillment';
 
@@ -200,39 +148,7 @@ export class OrderingService
     };
   }
 
-  private readonly urns = {
-    instanceType: 'urn:restorecommerce:acs:model:order:Order',
-    disableFulfillment: 'urn:restorecommerce:order:preferences:disableFulfillment',
-    disableInvoice: 'urn:restorecommerce:order:preferences:disableInvoice',
-    entity: 'urn:restorecommerce:acs:names:model:entity',
-    user: 'urn:restorecommerce:acs:model:user.User',
-    model: 'urn:restorecommerce:acs:model',
-    role: 'urn:restorecommerce:acs:names:role',
-    roleScopingEntity: 'urn:restorecommerce:acs:names:roleScopingEntity',
-    roleScopingInstance: 'urn:restorecommerce:acs:names:roleScopingInstance',
-    unauthenticated_user: 'urn:restorecommerce:acs:names:unauthenticated-user',
-    property: 'urn:restorecommerce:acs:names:model:property',
-    ownerIndicatoryEntity: 'urn:restorecommerce:acs:names:ownerIndicatoryEntity',
-    ownerInstance: 'urn:restorecommerce:acs:names:ownerInstance',
-    orgScope: 'urn:restorecommerce:acs:model:organization.Organization',
-    subjectID: 'urn:oasis:names:tc:xacml:1.0:subject:subject-id',
-    resourceID: 'urn:oasis:names:tc:xacml:1.0:resource:resource-id',
-    actionID: 'urn:oasis:names:tc:xacml:1.0:action:action-id',
-    action: 'urn:restorecommerce:acs:names:action',
-    operation: 'urn:restorecommerce:acs:names:operation',
-    execute: 'urn:restorecommerce:acs:names:action:execute',
-    permitOverrides: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
-    denyOverrides: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:deny-overrides',
-    create: 'urn:restorecommerce:acs:names:action:create',
-    read: 'urn:restorecommerce:acs:names:action:read',
-    modify: 'urn:restorecommerce:acs:names:action:modify',
-    delete: 'urn:restorecommerce:acs:names:action:delete',
-    organization: 'urn:restorecommerce:acs:model:organization.Organization',
-    aclIndicatoryEntity: 'urn:restorecommerce:acs:names:aclIndicatoryEntity',
-    aclInstance: 'urn:restorecommerce:acs:names:aclInstance',
-    skipACL: 'urn:restorecommerce:acs:names:skipACL',
-    maskedProperty: 'urn:restorecommerce:acs:names:obligation:maskedProperty',
-  };
+  private readonly urns = DefaultUrns;
 
   private readonly status_codes = {
     OK: {
@@ -333,16 +249,6 @@ export class OrderingService
     shipping: 'shipping',
     billing: 'billing',
   };
-
-  get ApiKey(): Subject {
-    const apiKey = this.cfg.get('authentication:apiKey');
-    return apiKey
-      ? {
-        id: 'apiKey',
-        token: apiKey,
-      }
-      : undefined;
-  }
 
   get entityName() {
     return this.name;
@@ -641,13 +547,7 @@ export class OrderingService
     ).then(
       response => {
         if (response.operation_status?.code === 200) {
-          return response?.items?.reduce(
-            (a, b) => {
-              a[b.payload.id] = b as OrderResponse;
-              return a;
-            },
-            {} as OrderMap
-          ) ?? {};
+          return toObjectMap(response.items);
         }
         else {
           throw response.operation_status;
@@ -851,12 +751,7 @@ export class OrderingService
           );
         }
         else {
-          return response.items!.reduce(
-            (a, b) => {
-              a[b.payload.id] = b;
-              return a;
-            }, {} as ProductMap
-          );
+          return toObjectMap(response.items);
         }
       }
     );
@@ -1405,7 +1300,6 @@ export class OrderingService
               const vats = taxes.filter(
                 t => (
                   t.country_id === country?.id &&
-                  order.customer_type === CustomerType.PRIVATE &&
                   country?.economic_areas?.some(
                     ea => billing_country?.payload?.economic_areas?.includes(ea)
                   ) && (
@@ -1853,10 +1747,10 @@ export class OrderingService
             items: orders.items?.map(item => ({
               order_id: item.payload.id,
             })),
-            subject: this.fulfillment_tech_user ?? this.ApiKey ?? request.subject,
+            subject: this.fulfillment_tech_user ?? request.subject,
           },
           context,
-          toObjectMap<OrderMap>(orders.items),
+          toObjectMap(orders.items),
         ).then(
           r => {
             r.items?.forEach(
@@ -2328,7 +2222,7 @@ export class OrderingService
         {
           items: valids.map(item => item.payload),
           total_count: valids.length,
-          subject: this.fulfillment_tech_user ?? this.ApiKey ?? request.subject,
+          subject: this.fulfillment_tech_user ?? request.subject,
         },
         context
       ).then(
@@ -2407,7 +2301,7 @@ export class OrderingService
         {
           items: valids.map(item => item.payload),
           total_count: valids.length,
-          subject: this.fulfillment_tech_user ?? this.ApiKey ?? request.subject,
+          subject: this.fulfillment_tech_user ?? request.subject,
         },
         context
       ).then(
@@ -2801,14 +2695,16 @@ export class OrderingService
         proto => proto.payload!
       );
 
-      const response = await this.invoice_service!.render(
+      const action = this.invoice_service.create;
+      const response = await action(
         {
           items: valids,
           total_count: valids.length,
-          subject: this.invoice_tech_user ?? this.ApiKey ?? request.subject,
+          subject: this.invoice_tech_user ?? request.subject,
         },
         context
       );
+      
 
       return {
         items: [
