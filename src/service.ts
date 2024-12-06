@@ -1325,7 +1325,7 @@ export class OrderingService
                 currency_id: unit_price.currency_id,
                 gross: gross.decimalPlaces(precision).toNumber(),
                 net: net.decimalPlaces(precision).toNumber(),
-                vats,
+                vats: vats.length ? vats : [{ vat: 0 }],
               };
             }
           ) ?? []);
