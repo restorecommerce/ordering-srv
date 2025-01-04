@@ -43,40 +43,25 @@ import {
   OrderingInvoiceRequest,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order.js';
 import {
-  PhysicalProduct,
-  PhysicalVariant,
   Product,
   ProductResponse,
   ProductServiceDefinition,
-  ServiceProduct,
-  ServiceVariant,
-  VirtualProduct,
-  VirtualVariant
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/product.js';
 import {
-  TaxServiceDefinition, Tax
+  TaxServiceDefinition
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/tax.js';
 import {
-  CustomerServiceDefinition, CustomerResponse, CustomerType,
+  CustomerServiceDefinition, CustomerType,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/customer.js';
 import {
   ShopServiceDefinition, ShopResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/shop.js';
 import {
-  OrganizationResponse, OrganizationServiceDefinition
+  OrganizationServiceDefinition
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/organization.js';
 import {
-  ContactPointServiceDefinition, ContactPointResponse
+  ContactPointServiceDefinition
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/contact_point.js';
-import {
-  CurrencyServiceDefinition, CurrencyResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/currency.js';
-import {
-  AddressServiceDefinition, AddressResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/address.js';
-import {
-  CountryServiceDefinition, CountryResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/country.js';
 import {
   FulfillmentServiceDefinition,
   Item as FulfillmentItem,
@@ -101,8 +86,6 @@ import {
   DeleteRequest,
   Filter_ValueType,
   ReadRequest,
-  Resource,
-  ResourceResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import {
   OperationStatus,
@@ -120,7 +103,39 @@ import {
   VAT
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/amount.js';
 import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth.js';
-import { AddressMap, BigAmount, BigVAT, ContactPointMap, CountryMap, CRUDClient, CurrencyMap, CustomerMap, DefaultUrns, FulfillmentMap, FulfillmentSolutionMap, OrderMap, OrganizationMap, PositionMap, ProductMap, ProductNature, ProductVariant, RatioedTax, RatioedTaxMap, ShopMap, toObjectMap, VATMap } from './utils.js';
+import { AddressServiceDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/address.js';
+import { CountryServiceDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/country.js';
+import { CurrencyServiceDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/currency.js';
+import { Setting, SettingServiceDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/setting.js';
+import {
+  AddressMap,
+  BigAmount,
+  BigVAT,
+  ContactPointMap,
+  CountryMap,
+  CRUDClient,
+  CurrencyMap,
+  CustomerMap,
+  DefaultUrns,
+  FulfillmentMap,
+  FulfillmentSolutionMap,
+  ResolvedSettingMap,
+  OrderMap,
+  OrganizationMap,
+  PositionMap,
+  ProductMap,
+  ProductNature,
+  ProductVariant,
+  RatioedTax,
+  RatioedTaxMap,
+  SettingMap,
+  ShopMap,
+  toObjectMap,
+  VATMap,
+  parseSetting,
+  ResolvedSetting,
+  DefaultSetting,
+} from './utils.js';
 
 const CREATE_FULFILLMENT = 'createFulfillment';
 
@@ -236,14 +251,12 @@ export class OrderingService
   protected readonly contact_point_service: Client<ContactPointServiceDefinition>;
   protected readonly address_service: Client<AddressServiceDefinition>;
   protected readonly country_service: Client<CountryServiceDefinition>;
+  protected readonly setting_service: Client<SettingServiceDefinition>;
   protected readonly currency_service: Client<CurrencyServiceDefinition>;
   protected readonly fulfillment_service?: Client<FulfillmentServiceDefinition>;
   protected readonly fulfillment_product_service?: Client<FulfillmentProductServiceDefinition>;
   protected readonly invoice_service?: Client<InvoiceServiceDefinition>;
-  protected readonly creates_fulfillments_on_submit?: boolean;
-  protected readonly creates_invoices_on_submit?: boolean;
-  protected readonly cleanup_fulfillments_post_submit?: boolean;
-  protected readonly cleanup_invoices_post_submit?: boolean;
+  protected readonly default_setting: ResolvedSetting;
   protected readonly contact_point_type_ids = {
     legal: 'legal',
     shipping: 'shipping',
@@ -383,6 +396,20 @@ export class OrderingService
       createChannel(cfg.get('client:country:address'))
     );
 
+    this.setting_service = createClient(
+      {
+        ...cfg.get('client:setting'),
+        logger
+      } as GrpcClientConfig,
+      SettingServiceDefinition,
+      createChannel(cfg.get('client:setting:address'))
+    );
+
+    this.default_setting = {
+      ...DefaultSetting,
+      ...(cfg.get('default:Setting') ?? {}),
+    }
+
     // optional Fulfillment
     const fulfillment_cfg = cfg.get('client:fulfillment');
     if (fulfillment_cfg.disabled?.toString() === 'true') {
@@ -390,8 +417,6 @@ export class OrderingService
     }
     else if (fulfillment_cfg) {
       this.logger.debug('Fulfillment-srv enabled.', fulfillment_cfg);
-      this.creates_fulfillments_on_submit = fulfillment_cfg.createOnSubmit?.toString() === 'true';
-      this.cleanup_fulfillments_post_submit = fulfillment_cfg.cleanupPostSubmit?.toString() === 'true';
       this.fulfillment_tech_user = fulfillment_cfg.tech_user;
       this.fulfillment_service = createClient(
         {
@@ -430,8 +455,6 @@ export class OrderingService
       // ignore!
     }
     else if (invoicing_cfg) {
-      this.creates_invoices_on_submit = invoicing_cfg.createOnSubmit;
-      this.cleanup_invoices_post_submit = invoicing_cfg.cleanupPostSubmit;
       this.invoice_tech_user = invoicing_cfg.users?.tech_user;
       this.invoice_service = createClient(
         {
@@ -1000,10 +1023,68 @@ export class OrderingService
     ) ?? []);
   }
 
+  private resolveSettings(
+    ...settings: Setting[]
+  ): ResolvedSetting {
+    const smap = new Map<string, string>(
+      settings?.flatMap(
+        s => s?.settings?.map(
+          s => [s.id, s.value]
+        ) ?? []
+      ) ?? []
+    );
+    const sobj = Object.assign(
+      {},
+      ...Object.entries(this.urns).filter(
+        ([key, value]) => smap.has(value)
+      ).map(
+        ([key, value]) => ({ [key]: parseSetting(key, smap.get(value)) })
+      )
+    );
+    
+    return {
+      ...this.default_setting,
+      ...sobj,
+    };
+  }
+
+  private async aggregateSettings(
+    order_list: OrderList,
+    subject?: Subject,
+    context?: any,
+    shop_map?: ShopMap,
+  ): Promise<ResolvedSettingMap> {
+    shop_map ??= await this.get<ShopMap>(
+      order_list.items?.map(item => item.shop_id) ?? [],
+      this.shop_service,
+      'shops',
+      subject,
+      context,
+    );
+    const setting_map = await this.get<SettingMap>(
+      Object.values(shop_map)?.map(item => item.payload?.setting_id) ?? [],
+      this.setting_service,
+      'settings',
+      subject,
+      context,
+    );
+
+    const resolved_settings: ResolvedSettingMap = new Map(
+      Object.entries(setting_map).map(([key, value]) => [
+        key,
+        this.resolveSettings(value.payload)
+      ])
+    );
+
+    return resolved_settings;
+  }
+
   private async aggregateOrders(
     order_list: OrderList,
     subject?: Subject,
-    context?: any
+    context?: any,
+    shop_map?: ShopMap,
+    customer_map?: CustomerMap,
   ): Promise<OrderListResponse> {
     if (!order_list?.items?.length) {
       return {
@@ -1044,14 +1125,14 @@ export class OrderingService
       subject,
       context,
     );
-    const customer_map = await this.get<CustomerMap>(
+    customer_map = await this.get<CustomerMap>(
       order_list.items?.map(item => item.customer_id) ?? [],
       this.customer_service,
       'customers',
       subject,
       context,
     );
-    const shop_map = await this.get<ShopMap>(
+    shop_map ??= await this.get<ShopMap>(
       order_list.items?.map(item => item.shop_id) ?? [],
       this.shop_service,
       'shops',
@@ -1675,7 +1756,7 @@ export class OrderingService
             {
               filters: [
                 {
-                  field: 'id',
+                  field: '_key',
                   operation: Filter_Operation.in,
                   value: JSON.stringify(request.items?.map(item => item.id)),
                   type: Filter_ValueType.ARRAY,
@@ -1712,21 +1793,42 @@ export class OrderingService
         {} as { [key: string]: OrderResponse }
       ) ?? {};
 
+      const shop_map = await this.get<ShopMap>(
+        request.items?.map(item => item.shop_id) ?? [],
+        this.shop_service,
+        'shops',
+        request.subject,
+        context,
+      );
+
+      const customer_map = await this.get<CustomerMap>(
+        request.items?.map(item => item.shop_id) ?? [],
+        this.customer_service,
+        'customers',
+        request.subject,
+        context,
+      );
+
+      const settings = await this.aggregateSettings(
+        request,
+        request.subject,
+        context,
+        shop_map,
+      );
+
       const orders = await this.aggregateOrders(
         request,
         request.subject,
         context,
+        shop_map,
+        customer_map,
       ).then(
         response => ({
-          items: response.items?.filter(
-            (item: OrderResponse) => {
+          items: response.items?.map(
+            item => {
               if (item.status?.id in response_map) {
                 response_map[item.status?.id] = item;
               }
-              return item.status?.code === 200;
-            }
-          ).map(
-            item => {
               item.payload.order_state = OrderState.PENDING;
               return item;
             }
@@ -1740,11 +1842,14 @@ export class OrderingService
       }
 
       const response: OrderSubmitListResponse = {};
-      if (this.creates_fulfillments_on_submit) {
+      if (this.fulfillment_service) {
         this.logger?.debug('Create fulfillment on submit...');
         response.fulfillments = await this._createFulfillment(
           {
-            items: orders.items?.map(item => ({
+            items: orders.items?.filter(
+              item => item.status?.code === 200
+                && settings.get(item.payload?.id)?.shop_fulfillment_create_enabled
+            ).map(item => ({
               order_id: item.payload.id,
             })),
             subject: this.fulfillment_tech_user ?? request.subject,
@@ -1769,11 +1874,15 @@ export class OrderingService
         );
       }
 
-      if (this.creates_invoices_on_submit) {
-        response.invoices = await this.createInvoice(
+      if (this.invoice_service) {
+        this.logger?.debug('Create invoices on submit...');
+        const created_invoices = await this._createInvoice(
           {
             items: orders.items?.filter(
-              order => order.status?.code === 200
+              item => item.status?.code === 200
+                && settings.get(item.payload?.id)?.shop_invoice_create_enabled
+                && !settings.get(item.payload?.id)?.shop_invoice_render_enabled
+                && !settings.get(item.payload?.id)?.shop_invoice_send_enabled
             ).map(
               order => ({
                 sections: [
@@ -1809,16 +1918,96 @@ export class OrderingService
             return r.items;
           }
         );
+
+        this.logger?.debug('Render invoices on submit...');
+        const rendered_invoices = await this._renderInvoice(
+          {
+            items: orders.items?.filter(
+              item => item.status?.code === 200
+                && (
+                  settings.get(item.payload?.id)?.shop_invoice_render_enabled
+                  || settings.get(item.payload?.id)?.shop_invoice_send_enabled
+                )
+            ).map(
+              order => ({
+                sections: [
+                  {
+                    order_id: order.payload?.id,
+                    fulfillment_mode: FulfillmentInvoiceMode.INCLUDE
+                  }
+                ]
+              })
+            ),
+            subject: request.subject,
+          },
+          context,
+        ).then(
+          r => {
+            r.items?.forEach(
+              invoice => {
+                invoice.payload?.references?.forEach(
+                  reference => {
+                    const order = response_map[reference?.instance_id];
+                    if (invoice.status?.code !== 200 && order) {
+                      order.status = {
+                        ...invoice.status,
+                        id: order.payload?.id ?? order.status?.id,
+                      };
+                    }
+                  }
+                );
+              }
+            );
+  
+            response.operation_status = r.operation_status;
+            return r.items;
+          }
+        );
+
+        response.invoices = [
+          ...created_invoices,
+          ...rendered_invoices
+        ];
+
+        this.logger?.debug('Send invoices on submit...');
+        await this.invoice_service.send(
+          {
+            items: response.invoices.filter(
+              item => item.status?.code === 200
+                && item.payload?.references?.[0]?.instance_id
+                && settings.get(
+                  item.payload.references[0].instance_id
+                )?.shop_invoice_send_enabled
+            ).map(
+              invoice => ({
+                id: invoice.payload.id,
+                document_ids: invoice.payload.documents?.map(d => d.id)
+              })
+            ),
+            subject: request.subject,
+          },
+          context,
+        ).then(
+          r => r.status?.forEach(
+            status => {
+              const invoice = response.invoices.find(
+                invoice => invoice.payload?.id === status.id
+              );
+              invoice.status = status;
+            }
+          )
+        );
       }
 
+      this.logger?.debug('Cleanup failed orders...');
       const failed_order_ids = orders.items?.filter(
         order => order.status?.code !== 200
       ).map(
         order => order.payload?.id ?? order.status?.id
       ) ?? [];
 
-      if (this.cleanup_fulfillments_post_submit) {
-        const failed_fulfillment_ids = response.fulfillments?.filter(
+      if (this.fulfillment_service) {
+        const ids = response.fulfillments?.filter(
           fulfillment => fulfillment.payload?.references?.some(
             reference => failed_order_ids.includes(reference?.instance_id)
           )
@@ -1826,31 +2015,11 @@ export class OrderingService
           fulfillment => fulfillment.payload.id
         );
 
-        if (failed_fulfillment_ids?.length) {
+        if (ids?.length) {
           await this.fulfillment_service?.delete(
             {
-              ids: failed_fulfillment_ids,
+              ids,
               subject: this.fulfillment_tech_user,
-            },
-            context,
-          );
-        }
-      }
-
-      if (this.cleanup_invoices_post_submit) {
-        const failed_invoice_ids = response.invoices?.filter(
-          invoice => invoice.payload?.references?.find(
-            reference => failed_order_ids.includes(reference?.instance_id)
-          )
-        ).map(
-          invoice => invoice.payload.id
-        );
-
-        if (failed_invoice_ids?.length) {
-          await this.invoice_service?.delete(
-            {
-              ids: failed_invoice_ids,
-              subject: this.invoice_tech_user,
             },
             context,
           );
@@ -2668,16 +2837,7 @@ export class OrderingService
     ) ?? [];
   }
 
-  @resolves_subject()
-  @access_controlled_function({
-    action: AuthZAction.CREATE,
-    operation: Operation.isAllowed,
-    context: OrderingService?.ACSContextFactory,
-    resource: [{ resource: 'invoice' }],
-    database: 'arangoDB',
-    useCache: true,
-  })
-  public async createInvoice(
+  private async _createInvoice(
     request: OrderingInvoiceRequestList,
     context?: any,
   ): Promise<InvoiceListResponse> {
@@ -2695,8 +2855,7 @@ export class OrderingService
         proto => proto.payload!
       );
 
-      const action = this.invoice_service.create;
-      const response = await action(
+      const response = await this.invoice_service.create(
         {
           items: valids,
           total_count: valids.length,
@@ -2704,7 +2863,6 @@ export class OrderingService
         },
         context
       );
-      
 
       return {
         items: [
@@ -2723,6 +2881,84 @@ export class OrderingService
     catch (e) {
       return this.catchOperationError(e);
     }
+  };
+
+  @resolves_subject()
+  @access_controlled_function({
+    action: AuthZAction.EXECUTE,
+    operation: Operation.isAllowed,
+    context: OrderingService?.ACSContextFactory,
+    resource: DefaultResourceFactory('execution.createInvoice'),
+    database: 'arangoDB',
+    useCache: true,
+  })
+  public async createInvoice(
+    request: OrderingInvoiceRequestList,
+    context?: any,
+  ): Promise<InvoiceListResponse> {
+    return await this._createInvoice(request, context);
+  };
+
+  private async _renderInvoice(
+    request: OrderingInvoiceRequestList,
+    context?: any,
+  ): Promise<InvoiceListResponse> {
+    try {
+      const prototypes = await this.toInvoiceResponsePrototypes(
+        request,
+        context,
+      );
+      const invalids = prototypes.filter(
+        proto => proto.status?.code !== 200
+      );
+      const valids = prototypes.filter(
+        proto => proto.status?.code === 200
+      ).map(
+        proto => proto.payload!
+      );
+
+      const response = await this.invoice_service.render(
+        {
+          items: valids,
+          total_count: valids.length,
+          subject: this.invoice_tech_user ?? request.subject,
+        },
+        context
+      );
+
+      return {
+        items: [
+          ...response.items!,
+          ...invalids
+        ],
+        total_count: response.items?.length + invalids.length,
+        operation_status: invalids.length
+          ? this.createOperationStatusCode(
+            this.operation_status_codes.PARTIAL,
+            'Invoice',
+          )
+          : response.operation_status,
+      };
+    }
+    catch (e) {
+      return this.catchOperationError(e);
+    }
+  };
+
+  @resolves_subject()
+  @access_controlled_function({
+    action: AuthZAction.EXECUTE,
+    operation: Operation.isAllowed,
+    context: OrderingService?.ACSContextFactory,
+    resource: DefaultResourceFactory('execution.renderInvoice'),
+    database: 'arangoDB',
+    useCache: true,
+  })
+  public async renderInvoice(
+    request: OrderingInvoiceRequestList,
+    context?: any,
+  ): Promise<InvoiceListResponse> {
+    return await this._renderInvoice(request, context);
   };
 
   @resolves_subject()

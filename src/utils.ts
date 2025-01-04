@@ -40,6 +40,9 @@ import {
   CountryServiceDefinition, CountryResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/country.js';
 import {
+  Setting, SettingResponse
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/setting.js';
+import {
   FulfillmentServiceDefinition,
   FulfillmentResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment.js';
@@ -93,6 +96,7 @@ export type AddressMap = ObjectMap<AddressResponse>;
 export type CountryMap = ObjectMap<CountryResponse>;
 export type PositionMap = ObjectMap<Position>;
 export type StatusMap = ObjectMap<Status>;
+export type SettingMap = ObjectMap<SettingResponse>;
 
 export type FulfillmentMap = { [key: string]: FulfillmentResponse[] };
 export type FulfillmentSolutionMap = { [key: string]: FulfillmentSolutionResponse };
@@ -129,40 +133,39 @@ export const DefaultUrns = {
   organization: 'urn:restorecommerce:acs:model:organization.Organization',
   user: 'urn:restorecommerce:acs:model:user.User',
 
-  shop_fulfillment_create_enabled: 'urn:restorecommerce:shop:setting:order:create:fulfillment:enabled',
-  shop_fulfillment_submit_enabled: 'urn:restorecommerce:shop:setting:order:submit:fulfillment:enabled',
-  shop_invoice_create_enabled: 'urn:restorecommerce:shop:setting:order:create:invoice:enabled',
-  shop_invoice_render_enabled: 'urn:restorecommerce:shop:setting:order:render:invoice:enabled',
-  shop_invoice_send_enabled: 'urn:restorecommerce:shop:setting:order:send:invoice:enabled',
-
-
-  /*
-  disableFulfillment: 'urn:restorecommerce:order:preferences:disableFulfillment',
-  disableInvoice: 'urn:restorecommerce:order:preferences:disableInvoice',
-  entity: 'urn:restorecommerce:acs:names:model:entity',
-  model: 'urn:restorecommerce:acs:model',
-  role: 'urn:restorecommerce:acs:names:role',
-  roleScopingEntity: 'urn:restorecommerce:acs:names:roleScopingEntity',
-  roleScopingInstance: 'urn:restorecommerce:acs:names:roleScopingInstance',
-  unauthenticated_user: 'urn:restorecommerce:acs:names:unauthenticated-user',
-  property: 'urn:restorecommerce:acs:names:model:property',
-  orgScope: 'urn:restorecommerce:acs:model:organization.Organization',
-  subjectID: 'urn:oasis:names:tc:xacml:1.0:subject:subject-id',
-  resourceID: 'urn:oasis:names:tc:xacml:1.0:resource:resource-id',
-  actionID: 'urn:oasis:names:tc:xacml:1.0:action:action-id',
-  action: 'urn:restorecommerce:acs:names:action',
-  operation: 'urn:restorecommerce:acs:names:operation',
-  execute: 'urn:restorecommerce:acs:names:action:execute',
-  permitOverrides: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:permit-overrides',
-  denyOverrides: 'urn:oasis:names:tc:xacml:3.0:rule-combining-algorithm:deny-overrides',
-  create: 'urn:restorecommerce:acs:names:action:create',
-  read: 'urn:restorecommerce:acs:names:action:read',
-  modify: 'urn:restorecommerce:acs:names:action:modify',
-  delete: 'urn:restorecommerce:acs:names:action:delete',
-  aclIndicatoryEntity: 'urn:restorecommerce:acs:names:aclIndicatoryEntity',
-  aclInstance: 'urn:restorecommerce:acs:names:aclInstance',
-  skipACL: 'urn:restorecommerce:acs:names:skipACL',
-  maskedProperty: 'urn:restorecommerce:acs:names:obligation:maskedProperty',
-  */
+  shop_fulfillment_create_enabled:  'urn:restorecommerce:shop:setting:order:submit:fulfillment:create:enabled', // Creates fulfillment on order submit if enabled (default: true)
+  shop_invoice_create_enabled:      'urn:restorecommerce:shop:setting:order:submit:invoice:create:enabled',     // Creates invoice on order submit if enabled (default: true)
+  shop_invoice_render_enabled:      'urn:restorecommerce:shop:setting:order:submit:invoice:render:enabled',     // Renders invoice on order submit if enabled, overrides create! (default: true)
+  shop_invoice_send_enabled:        'urn:restorecommerce:shop:setting:order:submit:invoice:send:enabled',       // Sends invoice on order submit if enabled, overrides render! (default: true)
+  shop_order_error_cleanup:         'urn:restorecommerce:shop:setting:order:error:cleanup:enabled',             // Clean up orders on any error of fulfillment or invoice (default: false)
 };
 export type KnownUrns = typeof DefaultUrns;
+
+export const DefaultSetting = {
+  shop_fulfillment_create_enabled: true,
+  shop_invoice_create_enabled: true,
+  shop_invoice_render_enabled: true,
+  shop_invoice_send_enabled: true,
+  shop_order_error_cleanup: true,
+}
+export type ResolvedSetting = typeof DefaultSetting;
+export type ResolvedSettingMap = Map<string, ResolvedSetting>;
+
+const parseTrue = (value: string) => value?.toString().toLowerCase() === 'true';
+const SettingParser: { [key: string]: (value: string) => any } = {
+  shop_fulfillment_create_enabled: parseTrue,
+  shop_invoice_create_enabled: parseTrue,
+  shop_invoice_render_enabled: parseTrue,
+  shop_invoice_send_enabled: parseTrue,
+  shop_order_error_cleanup: parseTrue
+};
+
+export const parseSetting = (key: string, value: string) => {
+  const parser = SettingParser[key];
+  if (parser) {
+    return parser(value);
+  }
+  else {
+    return value;
+  }
+}

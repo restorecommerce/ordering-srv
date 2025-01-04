@@ -36,7 +36,7 @@ import {
   TaxTypeListResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/tax_type.js';
 import {
-  PackingSolutionListResponse
+  FulfillmentSolutionListResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment_product.js';
 import {
   UserListResponse,
@@ -74,6 +74,7 @@ import {
   getRedisInstance,
   logger
 } from './utils.js';
+import { CurrencyListResponse, CurrencyResponse } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/currency.js';
 
 type Address = ShippingAddress & BillingAddress;
 
@@ -154,6 +155,22 @@ const businessAddresses: Address[] = [{
   }
 }];
 
+const currencies: CurrencyResponse[] = [{
+  payload: {
+    id: 'euro',
+    country_ids: ['germany'],
+    name: 'Euro',
+    precision: 2,
+    symbol: '€',
+    meta: mainMeta,
+  },
+  status: {
+    id: 'euro',
+    code: 200,
+    message: 'OK',
+  }
+}];
+
 const countries: CountryResponse[] = [{
   payload: {
     id: 'germany',
@@ -191,7 +208,7 @@ const products: ProductResponse[] = [
     payload: {
       id: 'physicalProduct_1',
       active: true,
-      shopId: 'shop_1',
+      shopIds: ['shop_1'],
       tags: [],
       associations: [],
       product: {
@@ -208,7 +225,7 @@ const products: ProductResponse[] = [
               name: 'Physical Product 1 Blue',
               description: 'This is a physical product in blue',
               price: {
-                currencyId: 'currency_1',
+                currencyId: 'euro',
                 regularPrice: 9.99,
                 salePrice: 8.99,
                 sale: false,
@@ -273,7 +290,7 @@ const products: ProductResponse[] = [
     payload: {
       id: 'physicalProduct_2',
       active: true,
-      shopId: 'shop_1',
+      shopIds: ['shop_1'],
       tags: [],
       associations: [],
       product: {
@@ -290,7 +307,7 @@ const products: ProductResponse[] = [
               name: 'Physical Product 1 Blue',
               description: 'This is a physical product in blue',
               price: {
-                currencyId: 'currency_1',
+                currencyId: 'euro',
                 regularPrice: 19.99,
                 salePrice: 18.99,
                 sale: false,
@@ -430,14 +447,6 @@ const validOrders: { [key: string]: OrderList } = {
           }
         ],
         notificationEmail: 'user@test.spec',
-        packagingPreferences: {
-          couriers: [{
-            id: 'name',
-            value: 'DHL',
-            attributes: [],
-          }],
-          options: [],
-        },
         userId: 'user_1',
         customerId: 'customer_1',
         shopId: 'shop_1',
@@ -470,14 +479,6 @@ const validOrders: { [key: string]: OrderList } = {
         orderState: OrderState.PENDING,
         totalAmounts: [],
         notificationEmail: 'user@test.spec',
-        packagingPreferences: {
-          couriers: [{
-            id: 'name',
-            value: 'DHL',
-            attributes: [],
-          }],
-          options: [],
-        },
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
       }
@@ -508,14 +509,6 @@ const invalidOrders: { [key: string]: OrderList } = {
         customerId: 'customerId_1',
         shopId: 'invalid_shop_1',
         notificationEmail: 'user@test.spec',
-        packagingPreferences: {
-          couriers: [{
-            id: 'name',
-            value: 'DHL',
-            attributes: [],
-          }],
-          options: [],
-        },
         totalAmounts: [],
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
@@ -528,14 +521,6 @@ const invalidOrders: { [key: string]: OrderList } = {
         customerId: 'customerId_1',
         shopId: 'invalid_shop_1',
         notificationEmail: 'user@test.spec',
-        packagingPreferences: {
-          couriers: [{
-            id: 'name',
-            value: 'DHL',
-            attributes: [],
-          }],
-          options: [],
-        },
         totalAmounts: [],
         orderState: OrderState.PENDING,
       }
@@ -558,14 +543,6 @@ const invalidOrders: { [key: string]: OrderList } = {
         customerId: 'customerId_1',
         shopId: 'shop_1',
         notificationEmail: 'user@test.spec',
-        packagingPreferences: {
-          couriers: [{
-            id: 'name',
-            value: 'DHL',
-            attributes: [],
-          }],
-          options: [],
-        },
         totalAmounts: [],
         billingAddress: residentialAddresses[0],
         shippingAddress: residentialAddresses[0],
@@ -932,13 +909,23 @@ export const rules = {
       operationStatus,
     }),
   },
+  currency: {
+    read: (
+      call: any,
+      callback: (error: any, response: CurrencyListResponse) => void,
+    )=> callback(null, {
+      items: currencies,
+      totalCount: currencies.length,
+      operationStatus
+    }),
+  },
   tax: {
     read: (
       call: any,
       callback: (error: any, response: TaxListResponse) => void,
     )=> callback(null, {
       items: taxes,
-      totalCount: 1,
+      totalCount: taxes.length,
       operationStatus
     }),
   },
@@ -968,7 +955,7 @@ export const rules = {
   fulfillment_product: {
     find: (
       call: any,
-      callback: (error: any, response: PackingSolutionListResponse) => void,
+      callback: (error: any, response: FulfillmentSolutionListResponse) => void,
     ) => callback(null, {
       items: [
         {
@@ -980,7 +967,7 @@ export const rules = {
             {
               amounts: [
                 {
-                  currencyId: 'currency_1',
+                  currencyId: 'euro',
                   gross: 2.0,
                   net: 2.38,
                   vats: [
@@ -1029,7 +1016,7 @@ export const rules = {
             {
               amounts: [
                 {
-                  currencyId: 'currency_1',
+                  currencyId: 'euro',
                   gross: 2.0,
                   net: 2.38,
                   vats: [

@@ -213,8 +213,6 @@
     "fulfillment": {
       "disabled": false,
       "address": "localhost:50067",
-      "createOnSubmit": true,
-      "cleanupPostSubmit": false,
       "tech_user": {
         "id": "root_tech_user",
         "token": "1a4c6789-6435-487a-9308-64d06384acf9"
@@ -231,8 +229,6 @@
     "invoice": {
       "disabled": true,
       "address": "localhost:50077",
-      "createOnSubmit": true,
-      "cleanupPostSubmit": true,
       "tech_user": {
         "id": "root_tech_user",
         "token": "1a4c6789-6435-487a-9308-64d06384acf9"
@@ -256,8 +252,11 @@
   },
   "urns": {
     "instanceType": "urn:restorecommerce:acs:model:order:Order",
-    "disableFulfillment": "urn:restorecommerce:order:preferences:disableFulfillment",
-    "disableInvoice": "urn:restorecommerce:order:preferences:disableInvoice"
+    "shop_fulfillment_create_enabled": "urn:restorecommerce:shop:setting:order:submit:fulfillment:create:enabled",
+    "shop_invoice_create_enabled": "urn:restorecommerce:shop:setting:order:submit:invoice:create:enabled",
+    "shop_invoice_render_enabled": "urn:restorecommerce:shop:setting:order:submit:invoice:render:enabled",
+    "shop_invoice_send_enabled": "urn:restorecommerce:shop:setting:order:submit:invoice:send:enabled",
+    "shop_order_error_cleanup": "urn:restorecommerce:customer:setting:order:error:cleanup:enabled"
   },
   "authorization": {
     "service": "acs-srv",
@@ -361,5 +360,14 @@
     "legal": "legal",
     "shipping": "shipping",
     "billing": "billing"
+  },
+  "default": {
+    "Setting": {
+      "shop_fulfillment_create_enabled": true,
+      "shop_invoice_create_enabled": true,
+      "shop_invoice_render_enabled": true,
+      "shop_invoice_send_enabled": true,
+      "shop_order_error_cleanup": true
+    }
   }
 }
