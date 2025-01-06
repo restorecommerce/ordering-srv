@@ -74,7 +74,9 @@ import {
   getRedisInstance,
   logger
 } from './utils.js';
-import { CurrencyListResponse, CurrencyResponse } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/currency.js';
+import {
+  CurrencyListResponse, CurrencyResponse
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/currency.js';
 
 type Address = ShippingAddress & BillingAddress;
 
@@ -158,7 +160,7 @@ const businessAddresses: Address[] = [{
 const currencies: CurrencyResponse[] = [{
   payload: {
     id: 'euro',
-    country_ids: ['germany'],
+    countryIds: ['germany'],
     name: 'Euro',
     precision: 2,
     symbol: '€',
@@ -506,7 +508,7 @@ const invalidOrders: { [key: string]: OrderList } = {
           }
         ],
         userId: 'userId_1',
-        customerId: 'customerId_1',
+        customerId: 'invalid_customer_1',
         shopId: 'invalid_shop_1',
         notificationEmail: 'user@test.spec',
         totalAmounts: [],
@@ -518,7 +520,7 @@ const invalidOrders: { [key: string]: OrderList } = {
         id: 'invalidOrder_2',
         items: [],
         userId: 'userId_1',
-        customerId: 'customerId_1',
+        customerId: 'invalid_customer_1',
         shopId: 'invalid_shop_1',
         notificationEmail: 'user@test.spec',
         totalAmounts: [],
@@ -540,8 +542,8 @@ const invalidOrders: { [key: string]: OrderList } = {
           }
         ],
         userId: 'userId_1',
-        customerId: 'customerId_1',
-        shopId: 'shop_1',
+        customerId: 'invalid_customer_1',
+        shopId: 'invalid_shop_1',
         notificationEmail: 'user@test.spec',
         totalAmounts: [],
         billingAddress: residentialAddresses[0],
@@ -1095,6 +1097,38 @@ export const rules = {
   },
   invoice: {
     create: (
+      call: any,
+      callback: (error: any, response: InvoiceListResponse) => void,
+    ) => callback(null, {
+      items: [{
+        payload: {
+          id: 'invoice_1',
+          documents: [],
+          paymentHints: [],
+          references: [
+            {
+              instanceType: 'urn:restorecommerce:io:Order',
+              instanceId: 'order_1',
+            },
+          ],
+          sections: [],
+          totalAmounts: [],
+          customerId: 'customer_1',
+          shopId: 'shop_1',
+          userId: 'user_1',
+          invoiceNumber: '00000001',
+          paymentState: PaymentState.UNPAYED,
+        },
+        status: {
+          id: 'invoice_1',
+          code: 200,
+          message: 'OK',
+        }
+      }],
+      totalCount: 1,
+      operationStatus,
+    }),
+    render: (
       call: any,
       callback: (error: any, response: InvoiceListResponse) => void,
     ) => callback(null, {

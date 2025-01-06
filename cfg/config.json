@@ -319,7 +319,7 @@
     },
     "NO_PHYSICAL_ITEM": {
       "id": "",
-      "code": 208,
+      "code": 207,
       "message": "{entity} {id} includes no physical item!"
     },
     "IN_HOMOGEN_INVOICE": {
@@ -334,7 +334,7 @@
       "message": "SUCCESS"
     },
     "PARTIAL": {
-      "code": 208,
+      "code": 207,
       "message": "Warning: Partially executed with errors!"
     },
     "LIMIT_EXHAUSTED": {

@@ -54,7 +54,7 @@ import {
   CustomerServiceDefinition, CustomerType,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/customer.js';
 import {
-  ShopServiceDefinition, ShopResponse
+  ShopServiceDefinition
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/shop.js';
 import {
   OrganizationServiceDefinition
@@ -198,7 +198,7 @@ export class OrderingService
     },
     NO_PHYSICAL_ITEM: {
       id: '',
-      code: 208,
+      code: 207,
       message: '{entity} {id} includes no physical item!',
     },
     IN_HOMOGEN_INVOICE: {
@@ -1816,7 +1816,7 @@ export class OrderingService
         shop_map,
       );
 
-      const orders = await this.aggregateOrders(
+      const response: OrderSubmitListResponse  = await this.aggregateOrders(
         request,
         request.subject,
         context,
@@ -1824,7 +1824,7 @@ export class OrderingService
         customer_map,
       ).then(
         response => ({
-          items: response.items?.map(
+          orders: response.items?.map(
             item => {
               if (item.status?.id in response_map) {
                 response_map[item.status?.id] = item;
@@ -1837,27 +1837,35 @@ export class OrderingService
         })
       );
 
-      if (orders.operation_status?.code !== 200) {
-        throw orders.operation_status;
+      if (!(response.operation_status?.code < 300)) {
+        this.logger.error('On Submit', response);
+        return response;
       }
-
-      const response: OrderSubmitListResponse = {};
+      
       if (this.fulfillment_service) {
         this.logger?.debug('Create fulfillment on submit...');
+        console.log(settings);
         response.fulfillments = await this._createFulfillment(
           {
-            items: orders.items?.filter(
-              item => item.status?.code === 200
-                && settings.get(item.payload?.id)?.shop_fulfillment_create_enabled
+            items: response.orders?.filter(
+              item => {
+                const setting = settings.get(item.payload?.id) ?? this.default_setting;
+                return item.status?.code === 200
+                  && setting.shop_fulfillment_create_enabled;
+              }
             ).map(item => ({
               order_id: item.payload.id,
             })),
             subject: this.fulfillment_tech_user ?? request.subject,
           },
           context,
-          toObjectMap(orders.items),
+          toObjectMap(response.orders),
         ).then(
           r => {
+            if (r.operation_status?.code !== 200) {
+              throw r.operation_status;
+            }
+
             r.items?.forEach(
               fulfillment => {
                 const id = fulfillment.payload?.references?.[0]?.instance_id ?? fulfillment.status?.id;
@@ -1868,7 +1876,6 @@ export class OrderingService
               }
             );
 
-            response.operation_status = r.operation_status;
             return r.items;
           }
         );
@@ -1878,11 +1885,14 @@ export class OrderingService
         this.logger?.debug('Create invoices on submit...');
         const created_invoices = await this._createInvoice(
           {
-            items: orders.items?.filter(
-              item => item.status?.code === 200
-                && settings.get(item.payload?.id)?.shop_invoice_create_enabled
-                && !settings.get(item.payload?.id)?.shop_invoice_render_enabled
-                && !settings.get(item.payload?.id)?.shop_invoice_send_enabled
+            items: response.orders?.filter(
+              item => {
+                const setting = settings.get(item.payload?.id) ?? this.default_setting;
+                return item.status?.code === 200
+                  && setting.shop_invoice_create_enabled
+                  && !setting.shop_invoice_render_enabled
+                  && !setting.shop_invoice_send_enabled;
+              }
             ).map(
               order => ({
                 sections: [
@@ -1914,7 +1924,9 @@ export class OrderingService
               }
             );
 
-            response.operation_status = r.operation_status;
+            if (r.operation_status?.code > response.operation_status?.code) {
+              response.operation_status = r.operation_status
+            }
             return r.items;
           }
         );
@@ -1922,12 +1934,15 @@ export class OrderingService
         this.logger?.debug('Render invoices on submit...');
         const rendered_invoices = await this._renderInvoice(
           {
-            items: orders.items?.filter(
-              item => item.status?.code === 200
-                && (
-                  settings.get(item.payload?.id)?.shop_invoice_render_enabled
-                  || settings.get(item.payload?.id)?.shop_invoice_send_enabled
-                )
+            items: response.orders?.filter(
+              item => {
+                const setting = settings.get(item.payload?.id) ?? this.default_setting;
+                return item.status?.code === 200
+                  && (
+                    setting.shop_invoice_render_enabled
+                    || setting.shop_invoice_send_enabled
+                  );
+              }
             ).map(
               order => ({
                 sections: [
@@ -1958,8 +1973,10 @@ export class OrderingService
                 );
               }
             );
-  
-            response.operation_status = r.operation_status;
+
+            if (r.operation_status?.code > response.operation_status?.code) {
+              response.operation_status = r.operation_status
+            }
             return r.items;
           }
         );
@@ -1973,7 +1990,7 @@ export class OrderingService
         await this.invoice_service.send(
           {
             items: response.invoices.filter(
-              item => item.status?.code === 200
+              item => item.status?.code < 300
                 && item.payload?.references?.[0]?.instance_id
                 && settings.get(
                   item.payload.references[0].instance_id
@@ -1999,9 +2016,34 @@ export class OrderingService
         );
       }
 
+      if (response.operation_status?.code < 300) {
+        const submits = response.orders.filter(
+          order => order.status?.code === 200
+        ).map(
+          order => {
+            order.payload.order_state = OrderState.SUBMITTED;
+            return order.payload;
+          }
+        );
+
+        await super.upsert(
+          OrderList.fromPartial({
+            items: submits,
+            total_count: submits.length,
+            subject: request.subject,
+          }),
+          context,
+        ).then(
+          r => r.items?.forEach(
+            item => response_map[item.payload?.id ?? item.status?.id] = item
+          )
+        );
+      }
+
       this.logger?.debug('Cleanup failed orders...');
-      const failed_order_ids = orders.items?.filter(
+      const failed_order_ids = Object.values(response_map)?.filter(
         order => order.status?.code !== 200
+          && settings.get(order.status?.id)?.shop_order_error_cleanup
       ).map(
         order => order.payload?.id ?? order.status?.id
       ) ?? [];
@@ -2026,39 +2068,6 @@ export class OrderingService
         }
       }
 
-      if (response.operation_status?.code < 300) {
-        const submits = Object.values(response_map).filter(
-          order => order.status?.code === 200
-        ).map(
-          order => {
-            order.payload.order_state = OrderState.SUBMITTED;
-            return order.payload;
-          }
-        );
-
-        await super.upsert(
-          OrderList.fromPartial({
-            items: submits,
-            total_count: submits.length,
-            subject: request.subject,
-          }),
-          context,
-        ).then(
-          r => r.items?.forEach(
-            item => response_map[item.payload?.id ?? item.status?.id] = item
-          )
-        );
-      }
-      else {
-        Object.values(response_map).forEach(
-          order => order.status = {
-            id: order.payload.id,
-            code: response.operation_status.code,
-            message: response.operation_status.message,
-          }
-        );
-      }
-
       Object.values(response_map).forEach(
         item => {
           if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
@@ -2071,6 +2080,7 @@ export class OrderingService
       );
 
       response.orders = request.items.map(item => response_map[item.id]);
+      this.logger.error('test', response);
       return response;
     }
     catch (e: any) {
@@ -2142,6 +2152,13 @@ export class OrderingService
     orders?: OrderMap,
     products?: ProductMap,
   ): Promise<FulfillmentSolutionListResponse> {
+    if (!request.items?.length) {
+      return {
+        items: [],
+        operation_status: this.operation_status_codes.SUCCESS
+      }
+    }
+
     const response_map = request.items?.reduce(
       (a, b) => {
         a[b.order_id] = {
@@ -2358,6 +2375,13 @@ export class OrderingService
     orders?: OrderMap,
   ): Promise<FulfillmentListResponse> {
     try {
+      if (!request.items?.length) {
+        return {
+          items: [],
+          operation_status: this.operation_status_codes.SUCCESS
+        }
+      }
+
       orders ??= await this.getOrderMap(
         request.items?.map(item => item.order_id!),
         request.subject,
@@ -2439,6 +2463,13 @@ export class OrderingService
     orders?: OrderMap,
   ): Promise<FulfillmentListResponse> {
     try {
+      if (!request.items?.length) {
+        return {
+          items: [],
+          operation_status: this.operation_status_codes.SUCCESS
+        }
+      }
+
       const evaluated = await this._evaluateFulfillment(
         request,
         context,
@@ -2526,6 +2557,13 @@ export class OrderingService
     request: OrderList,
     context?: any
   ): Promise<FulfillmentListResponse> {
+    if (!request.items?.length) {
+      return {
+        items: [],
+        operation_status: this.operation_status_codes.SUCCESS
+      }
+    }
+
     const order_map = request?.items?.reduce(
       (a, b) => {
         a[b.id] = { 
@@ -2842,6 +2880,13 @@ export class OrderingService
     context?: any,
   ): Promise<InvoiceListResponse> {
     try {
+      if (!request.items?.length) {
+        return {
+          items: [],
+          operation_status: this.operation_status_codes.SUCCESS
+        }
+      }
+
       const prototypes = await this.toInvoiceResponsePrototypes(
         request,
         context,
@@ -2904,6 +2949,13 @@ export class OrderingService
     context?: any,
   ): Promise<InvoiceListResponse> {
     try {
+      if (!request.items?.length) {
+        return {
+          items: [],
+          operation_status: this.operation_status_codes.SUCCESS
+        }
+      }
+
       const prototypes = await this.toInvoiceResponsePrototypes(
         request,
         context,

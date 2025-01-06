@@ -234,6 +234,9 @@ describe('The Ordering Service:', () => {
         !response.orders?.some(item => item.status?.code !== 200),
         'response.orders[*].status.code expected all to be 200',
       );
+      should.exist(response.orders, 'expect orders to exist');
+      should.exist(response.fulfillments, 'expect fulfillments to exist');
+      should.exist(response.invoices, 'expect invoices to exist');
     });
 
     it('should have received an order submit event', async function() {
