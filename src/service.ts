@@ -1844,7 +1844,6 @@ export class OrderingService
       
       if (this.fulfillment_service) {
         this.logger?.debug('Create fulfillment on submit...');
-        console.log(settings);
         response.fulfillments = await this._createFulfillment(
           {
             items: response.orders?.filter(
@@ -2080,7 +2079,6 @@ export class OrderingService
       );
 
       response.orders = request.items.map(item => response_map[item.id]);
-      this.logger.error('test', response);
       return response;
     }
     catch (e: any) {

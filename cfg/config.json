@@ -227,7 +227,7 @@
       }
     },
     "invoice": {
-      "disabled": true,
+      "disabled": false,
       "address": "localhost:50077",
       "tech_user": {
         "id": "root_tech_user",

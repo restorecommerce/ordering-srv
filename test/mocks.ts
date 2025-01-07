@@ -55,7 +55,8 @@ import {
   FulfillmentResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment.js';
 import {
-  OperationStatus
+  OperationStatus,
+  StatusListResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/status.js';
 import {
   InvoiceListResponse,
@@ -1158,6 +1159,17 @@ export const rules = {
         }
       }],
       totalCount: 1,
+      operationStatus,
+    }),
+    send: (
+      call: any,
+      callback: (error: any, response: StatusListResponse) => void,
+    ) => callback(null, {
+      status: [{
+        id: 'invoice_1',
+        code: 200,
+        message: 'OK',
+      }],
       operationStatus,
     })
   },
