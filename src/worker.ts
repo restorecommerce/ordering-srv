@@ -43,8 +43,7 @@ registerProtoMeta(
 );
 
 export type Handler = (msg: any, context: any, config: any, eventName: string) => any;
-export type HandlerMap = { [key: string]: Handler };
-
+export type HandlerMap = Record<string, Handler>;
 export class Worker {
   private _cfg?: ServiceConfig;
   private _offsetStore?: OffsetStore;

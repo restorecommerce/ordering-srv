@@ -367,7 +367,7 @@
       "shop_invoice_create_enabled": true,
       "shop_invoice_render_enabled": true,
       "shop_invoice_send_enabled": true,
-      "shop_order_error_cleanup": true
+      "shop_order_error_cleanup_enabled": true
     }
   }
 }

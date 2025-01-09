@@ -104,7 +104,7 @@ describe('The Ordering Service:', () => {
         worker?.stop(),
       ])
     ).finally(
-      () => mocking?.forEach(mock => mock?.stop())
+      () => Promise.allSettled(mocking?.map(mock => mock?.stop()))
     );
   });
 

@@ -137,7 +137,7 @@ export const DefaultUrns = {
   shop_invoice_create_enabled:      'urn:restorecommerce:shop:setting:order:submit:invoice:create:enabled',     // Creates invoice on order submit if enabled (default: true)
   shop_invoice_render_enabled:      'urn:restorecommerce:shop:setting:order:submit:invoice:render:enabled',     // Renders invoice on order submit if enabled, overrides create! (default: true)
   shop_invoice_send_enabled:        'urn:restorecommerce:shop:setting:order:submit:invoice:send:enabled',       // Sends invoice on order submit if enabled, overrides render! (default: true)
-  shop_order_error_cleanup:         'urn:restorecommerce:shop:setting:order:error:cleanup:enabled',             // Clean up orders on any error of fulfillment or invoice (default: false)
+  shop_order_error_cleanup_enabled: 'urn:restorecommerce:shop:setting:order:error:cleanup:enabled',             // Clean up orders on any error of fulfillment or invoice (default: false)
 };
 export type KnownUrns = typeof DefaultUrns;
 
@@ -146,7 +146,7 @@ export const DefaultSetting = {
   shop_invoice_create_enabled: true,
   shop_invoice_render_enabled: true,
   shop_invoice_send_enabled: true,
-  shop_order_error_cleanup: true,
+  shop_order_error_cleanup_enabled: true,
 }
 export type ResolvedSetting = typeof DefaultSetting;
 export type ResolvedSettingMap = Map<string, ResolvedSetting>;

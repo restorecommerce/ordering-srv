@@ -2042,7 +2042,7 @@ export class OrderingService
       this.logger?.debug('Cleanup failed orders...');
       const failed_order_ids = Object.values(response_map)?.filter(
         order => order.status?.code !== 200
-          && settings.get(order.status?.id)?.shop_order_error_cleanup
+          && settings.get(order.status?.id)?.shop_order_error_cleanup_enabled
       ).map(
         order => order.payload?.id ?? order.status?.id
       ) ?? [];
