@@ -74,7 +74,7 @@
       "address": "fulfillment-srv:50051"
     },
     "invoice": {
-      "address": "invoice-srv:50051"
+      "address": "invoicing-srv:50051"
     }
   },
   "authorization": {

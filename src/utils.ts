@@ -83,7 +83,7 @@ export type RatioedTax = Tax & {
 };
 
 export type Entity = Resource & ResourceResponse;
-export type ObjectMap<T extends Entity> = { [key: string]: T };
+export type ObjectMap<T extends Entity> = Record<string, T>;
 export type OrderMap = ObjectMap<OrderResponse>;
 export type ProductMap = ObjectMap<ProductResponse>;
 export type RatioedTaxMap = ObjectMap<RatioedTax>;
@@ -98,10 +98,10 @@ export type PositionMap = ObjectMap<Position>;
 export type StatusMap = ObjectMap<Status>;
 export type SettingMap = ObjectMap<SettingResponse>;
 
-export type FulfillmentMap = { [key: string]: FulfillmentResponse[] };
-export type FulfillmentSolutionMap = { [key: string]: FulfillmentSolutionResponse };
-export type OperationStatusMap = { [key: string]: OperationStatus };
-export type VATMap = { [key: string]: VAT };
+export type FulfillmentMap = Record<string, FulfillmentResponse[]>;
+export type FulfillmentSolutionMap = Record<string, FulfillmentSolutionResponse>;
+export type OperationStatusMap = Record<string, OperationStatus>;
+export type VATMap = Record<string, VAT>;
 export type ProductNature = PhysicalProduct & VirtualProduct & ServiceProduct;
 export type ProductVariant = PhysicalVariant & VirtualVariant & ServiceVariant;
 export type CRUDClient = Client<ProductServiceDefinition>
@@ -126,6 +126,19 @@ export const toObjectMap = <T extends Entity>(items: T[]): ObjectMap<T> => items
   {} as ObjectMap<T>
 ) ?? {};
 
+export const toObjectListMap = <T extends Entity>(items: T[]): Record<string, T[]> => items.reduce(
+  (a, b) => {
+    if ((b.id ?? b.payload?.id) in a) {
+      a[b.id ?? b.payload?.id].push(b);
+    }
+    else {
+      a[b.id ?? b.payload?.id] = [b];
+    }
+    return a;
+  },
+  {} as Record<string, T[]>
+) ?? {};
+
 export const DefaultUrns = {
   instanceType: 'urn:restorecommerce:acs:model:order:Order',
   ownerIndicatoryEntity: 'urn:restorecommerce:acs:names:ownerIndicatoryEntity',
@@ -142,10 +155,13 @@ export const DefaultUrns = {
 export type KnownUrns = typeof DefaultUrns;
 
 export const DefaultSetting = {
+  shop_fulfillment_evaluate_enabled: true,
   shop_fulfillment_create_enabled: true,
+  shop_fulfillment_trigger_enabled: false,
   shop_invoice_create_enabled: true,
   shop_invoice_render_enabled: true,
-  shop_invoice_send_enabled: true,
+  shop_invoice_send_enabled: false,
+  shop_invoice_trigger_enabled: false,
   shop_order_error_cleanup_enabled: true,
 }
 export type ResolvedSetting = typeof DefaultSetting;

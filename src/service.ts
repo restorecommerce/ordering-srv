@@ -97,7 +97,8 @@ import {
   InvoiceResponse,
   Section,
   Position,
-  InvoiceServiceDefinition
+  InvoiceServiceDefinition,
+  InvoiceList
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/invoice.js';
 import {
   VAT
@@ -135,6 +136,7 @@ import {
   parseSetting,
   ResolvedSetting,
   DefaultSetting,
+  toObjectListMap,
 } from './utils.js';
 
 const CREATE_FULFILLMENT = 'createFulfillment';
@@ -164,7 +166,6 @@ export class OrderingService
   }
 
   private readonly urns = DefaultUrns;
-
   private readonly status_codes = {
     OK: {
       id: '',
@@ -237,7 +238,11 @@ export class OrderingService
     ITEM_NOT_FOUND: {
       code: 404,
       message: '{entity} {id} not found!',
-    }
+    },
+    INVALID_INVOICES: {
+      code: 500,
+      message: 'Invalid invoices!'
+    },
   };
 
   protected readonly emitters: any;
@@ -455,7 +460,7 @@ export class OrderingService
       // ignore!
     }
     else if (invoicing_cfg) {
-      this.invoice_tech_user = invoicing_cfg.users?.tech_user;
+      this.invoice_tech_user = invoicing_cfg.tech_user;
       this.invoice_service = createClient(
         {
           ...invoicing_cfg,
@@ -903,17 +908,7 @@ export class OrderingService
     ).then(
       response => {
         if (response.operation_status?.code === 200) {
-          return response.items?.reduce(
-            (a, b) => {
-              if (b.payload.id in a) {
-                a[b.payload.id].push(b);
-              }
-              else {
-                a[b.payload.id] = [b];
-              }
-              return a;
-            }, {} as FulfillmentMap
-          ) ?? {};
+          return toObjectListMap(response.items);
         }
         else {
           throw response.operation_status;
@@ -1790,7 +1785,7 @@ export class OrderingService
           a[b.id] = {};
           return a;
         },
-        {} as { [key: string]: OrderResponse }
+        {} as Record<string, OrderResponse> 
       ) ?? {};
 
       const shop_map = await this.get<ShopMap>(
@@ -1802,7 +1797,7 @@ export class OrderingService
       );
 
       const customer_map = await this.get<CustomerMap>(
-        request.items?.map(item => item.shop_id) ?? [],
+        request.items?.map(item => item.customer_id) ?? [],
         this.customer_service,
         'customers',
         request.subject,
@@ -1837,246 +1832,387 @@ export class OrderingService
         })
       );
 
-      if (!(response.operation_status?.code < 300)) {
-        this.logger.error('On Submit', response);
+      if (response.operation_status?.code !== 200 && response.operation_status?.code !== 207) {
+        this.logger.error('On Order Submit', response);
         return response;
       }
       
-      if (this.fulfillment_service) {
-        this.logger?.debug('Create fulfillment on submit...');
-        response.fulfillments = await this._createFulfillment(
-          {
-            items: response.orders?.filter(
-              item => {
-                const setting = settings.get(item.payload?.id) ?? this.default_setting;
-                return item.status?.code === 200
-                  && setting.shop_fulfillment_create_enabled;
-              }
-            ).map(item => ({
-              order_id: item.payload.id,
-            })),
-            subject: this.fulfillment_tech_user ?? request.subject,
-          },
-          context,
-          toObjectMap(response.orders),
-        ).then(
-          r => {
-            if (r.operation_status?.code !== 200) {
-              throw r.operation_status;
-            }
-
-            r.items?.forEach(
-              fulfillment => {
-                const id = fulfillment.payload?.references?.[0]?.instance_id ?? fulfillment.status?.id;
-                const order = response_map[id];
-                if (order && fulfillment.status?.code !== 200) {
-                  order.status = fulfillment.status;
-                }
-              }
-            );
-
-            return r.items;
-          }
-        );
-      }
-
-      if (this.invoice_service) {
-        this.logger?.debug('Create invoices on submit...');
-        const created_invoices = await this._createInvoice(
-          {
-            items: response.orders?.filter(
-              item => {
-                const setting = settings.get(item.payload?.id) ?? this.default_setting;
-                return item.status?.code === 200
-                  && setting.shop_invoice_create_enabled
-                  && !setting.shop_invoice_render_enabled
-                  && !setting.shop_invoice_send_enabled;
-              }
-            ).map(
-              order => ({
-                sections: [
-                  {
-                    order_id: order.payload?.id,
-                    fulfillment_mode: FulfillmentInvoiceMode.INCLUDE
-                  }
-                ]
-              })
-            ),
-            subject: request.subject,
-          },
-          context,
-        ).then(
-          r => {
-            r.items?.forEach(
-              invoice => {
-                invoice.payload?.references?.forEach(
-                  reference => {
-                    const order = response_map[reference?.instance_id];
-                    if (invoice.status?.code !== 200 && order) {
-                      order.status = {
-                        ...invoice.status,
-                        id: order.payload?.id ?? order.status?.id,
-                      };
-                    }
-                  }
-                );
-              }
-            );
-
-            if (r.operation_status?.code > response.operation_status?.code) {
-              response.operation_status = r.operation_status
-            }
-            return r.items;
-          }
-        );
-
-        this.logger?.debug('Render invoices on submit...');
-        const rendered_invoices = await this._renderInvoice(
-          {
-            items: response.orders?.filter(
-              item => {
-                const setting = settings.get(item.payload?.id) ?? this.default_setting;
-                return item.status?.code === 200
-                  && (
-                    setting.shop_invoice_render_enabled
-                    || setting.shop_invoice_send_enabled
-                  );
-              }
-            ).map(
-              order => ({
-                sections: [
-                  {
-                    order_id: order.payload?.id,
-                    fulfillment_mode: FulfillmentInvoiceMode.INCLUDE
-                  }
-                ]
-              })
-            ),
-            subject: request.subject,
-          },
-          context,
-        ).then(
-          r => {
-            r.items?.forEach(
-              invoice => {
-                invoice.payload?.references?.forEach(
-                  reference => {
-                    const order = response_map[reference?.instance_id];
-                    if (invoice.status?.code !== 200 && order) {
-                      order.status = {
-                        ...invoice.status,
-                        id: order.payload?.id ?? order.status?.id,
-                      };
-                    }
-                  }
-                );
-              }
-            );
-
-            if (r.operation_status?.code > response.operation_status?.code) {
-              response.operation_status = r.operation_status
-            }
-            return r.items;
-          }
-        );
-
-        response.invoices = [
-          ...created_invoices,
-          ...rendered_invoices
-        ];
-
-        this.logger?.debug('Send invoices on submit...');
-        await this.invoice_service.send(
-          {
-            items: response.invoices.filter(
-              item => item.status?.code < 300
-                && item.payload?.references?.[0]?.instance_id
-                && settings.get(
-                  item.payload.references[0].instance_id
-                )?.shop_invoice_send_enabled
-            ).map(
-              invoice => ({
-                id: invoice.payload.id,
-                document_ids: invoice.payload.documents?.map(d => d.id)
-              })
-            ),
-            subject: request.subject,
-          },
-          context,
-        ).then(
-          r => r.status?.forEach(
-            status => {
-              const invoice = response.invoices.find(
-                invoice => invoice.payload?.id === status.id
-              );
-              invoice.status = status;
-            }
-          )
-        );
-      }
-
-      if (response.operation_status?.code < 300) {
-        const submits = response.orders.filter(
-          order => order.status?.code === 200
-        ).map(
-          order => {
-            order.payload.order_state = OrderState.SUBMITTED;
-            return order.payload;
-          }
-        );
-
-        await super.upsert(
-          OrderList.fromPartial({
-            items: submits,
-            total_count: submits.length,
-            subject: request.subject,
-          }),
-          context,
-        ).then(
-          r => r.items?.forEach(
-            item => response_map[item.payload?.id ?? item.status?.id] = item
-          )
-        );
-      }
-
-      this.logger?.debug('Cleanup failed orders...');
-      const failed_order_ids = Object.values(response_map)?.filter(
-        order => order.status?.code !== 200
-          && settings.get(order.status?.id)?.shop_order_error_cleanup_enabled
-      ).map(
-        order => order.payload?.id ?? order.status?.id
-      ) ?? [];
-
-      if (this.fulfillment_service) {
-        const ids = response.fulfillments?.filter(
-          fulfillment => fulfillment.payload?.references?.some(
-            reference => failed_order_ids.includes(reference?.instance_id)
-          )
-        ).map(
-          fulfillment => fulfillment.payload.id
-        );
-
-        if (ids?.length) {
-          await this.fulfillment_service?.delete(
+      try {
+        if (this.fulfillment_service) {
+          this.logger?.debug('Evaluate fulfillment on submit...');
+          response.fulfillments = await this._evaluateFulfillment(
             {
-              ids,
-              subject: this.fulfillment_tech_user,
+              items: response.orders?.filter(
+                item => {
+                  const setting = settings.get(item.payload?.id) ?? this.default_setting;
+                  return item.status?.code === 200
+                    && setting.shop_fulfillment_evaluate_enabled;
+                }
+              ).map(item => ({
+                order_id: item.payload.id,
+              })),
+              subject: this.fulfillment_tech_user ?? request.subject,
             },
             context,
+            toObjectMap(response.orders),
+          ).then(
+            r => {
+              r.items?.forEach(
+                fulfillment => {
+                  const id = fulfillment.payload?.references?.[0]?.instance_id ?? fulfillment.status?.id;
+                  const order = response_map[id];
+                  if (order && fulfillment.status?.code !== 200) {
+                    order.status = fulfillment.status;
+                  }
+                }
+              );
+
+              if (r.operation_status?.code !== 200 && r.operation_status?.code !== 207) {
+                throw r.operation_status;
+              }
+              return r.items;
+            }
+          ).catch(
+            error => {
+              if (error.message) {
+                error = {
+                  ...error,
+                  message: 'On Fulfillment Evaluate: ' + error.message,
+                };
+              }
+              throw error;
+            }
+          );
+          
+          this.logger?.debug('Create fulfillment on submit...');
+          response.fulfillments = await this._createFulfillment(
+            {
+              items: response.orders?.filter(
+                item => {
+                  const setting = settings.get(item.payload?.id) ?? this.default_setting;
+                  return item.status?.code === 200
+                    && setting.shop_fulfillment_create_enabled;
+                }
+              ).map(item => ({
+                order_id: item.payload.id,
+              })),
+              subject: this.fulfillment_tech_user ?? request.subject,
+            },
+            context,
+            toObjectMap(response.orders),
+          ).then(
+            r => {
+              r.items?.forEach(
+                fulfillment => {
+                  const id = fulfillment.payload?.references?.[0]?.instance_id ?? fulfillment.status?.id;
+                  const order = response_map[id];
+                  if (order && fulfillment.status?.code !== 200) {
+                    order.status = fulfillment.status;
+                  }
+                }
+              );
+
+              if (r.operation_status?.code !== 200 && r.operation_status?.code !== 207) {
+                throw r.operation_status;
+              }
+              return r.items;
+            }
+          ).catch(
+            error => {
+              if (error.message) {
+                error = {
+                  ...error,
+                  message: 'On Fulfillment Create: ' + error.message
+                };
+              }
+              throw error;
+            }
           );
         }
-      }
 
-      Object.values(response_map).forEach(
-        item => {
-          if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
-            this.topic.emit(this.emitters['INVALID'], item);
-          }
-          else if (item.payload?.order_state in this.emitters) {
-            this.topic.emit(this.emitters[item.payload.order_state], item.payload);
+        if (response.operation_status?.code !== 200) {
+          this.logger.error('On Submit', response);
+          return response;
+        }
+
+        if (this.invoice_service) {
+          this.logger?.debug('Create invoices on submit...');
+          const created_invoices = await this._createInvoice(
+            {
+              items: response.orders?.filter(
+                item => {
+                  const setting = settings.get(item.payload?.id) ?? this.default_setting;
+                  return item.status?.code === 200
+                    && setting.shop_invoice_create_enabled
+                    && !setting.shop_invoice_render_enabled
+                    && !setting.shop_invoice_send_enabled;
+                }
+              ).map(
+                order => ({
+                  sections: [
+                    {
+                      order_id: order.payload?.id,
+                      fulfillment_mode: FulfillmentInvoiceMode.INCLUDE
+                    }
+                  ]
+                })
+              ),
+              subject: this.invoice_tech_user ?? request.subject,
+            },
+            context,
+            toObjectMap(response.orders),
+            toObjectListMap(response.fulfillments),
+          ).then(
+            r => {
+              r.items?.forEach(
+                invoice => {
+                  invoice.payload?.references?.forEach(
+                    reference => {
+                      const order = response_map[reference?.instance_id];
+                      if (invoice.status?.code !== 200 && order) {
+                        order.status = {
+                          ...invoice.status,
+                          id: order.payload?.id ?? order.status?.id,
+                        };
+                      }
+                    }
+                  );
+                }
+              );
+
+              if (r.operation_status?.code !== 200 && r.operation_status?.code !== 207) {
+                throw r.operation_status;
+              }
+              return r.items;
+            }
+          ).catch(
+            error => {
+              if (error.message) {
+                error = {
+                  ...error,
+                  message: 'On Invoice Create: ' + error.message,
+                }
+              }
+              throw error;
+            }
+          );
+
+          this.logger?.debug('Render invoices on submit...');
+          const rendered_invoices = await this._renderInvoice(
+            {
+              items: response.orders?.filter(
+                item => {
+                  const setting = settings.get(item.payload?.id) ?? this.default_setting;
+                  return item.status?.code === 200
+                    && (
+                      setting.shop_invoice_render_enabled
+                      || setting.shop_invoice_send_enabled
+                    );
+                }
+              ).map(
+                order => ({
+                  sections: [
+                    {
+                      order_id: order.payload?.id,
+                      fulfillment_mode: FulfillmentInvoiceMode.INCLUDE
+                    }
+                  ]
+                })
+              ),
+              subject: this.invoice_tech_user ?? request.subject,
+            },
+            context,
+            toObjectMap(response.orders),
+            toObjectListMap(response.fulfillments),
+          ).then(
+            r => {
+              r.items?.forEach(
+                invoice => {
+                  invoice.payload?.references?.forEach(
+                    reference => {
+                      const order = response_map[reference?.instance_id];
+                      if (invoice.status?.code !== 200 && order) {
+                        order.status = {
+                          ...invoice.status,
+                          id: order.payload?.id ?? order.status?.id,
+                        };
+                      }
+                    }
+                  );
+                }
+              );
+
+              if (r.operation_status?.code !== 200 && r.operation_status?.code !== 207) {
+                throw r.operation_status;
+              }
+              return r.items;
+            }
+          ).catch(
+            error => {
+              if (error.message) {
+                error = {
+                  ...error,
+                  message: 'On Invoice Render: ' + error.message
+                }
+              }
+              throw error;
+            }
+          );
+
+          response.invoices = [
+            ...(created_invoices ?? []),
+            ...(rendered_invoices ?? []),
+          ];
+
+          this.logger?.debug('Send invoices on submit...');
+          const invoices = response.invoices?.filter(
+            item => {
+              const setting = settings.get(item.payload?.id) ?? this.default_setting;
+              return item.status?.code === 200
+                && item.payload?.references?.[0]?.instance_id
+                && setting?.shop_invoice_send_enabled;
+            }
+          ).map(
+            invoice => ({
+              id: invoice.payload.id,
+              document_ids: invoice.payload.documents?.map(d => d.id)
+            })
+          );
+          if (invoices?.length) {
+            await this.invoice_service.send(
+              {
+                items: invoices,
+                subject: this.invoice_tech_user ?? request.subject,
+              },
+              context,
+            ).then(
+              r => {
+                r.status?.forEach(
+                  status => {
+                    const invoice = response.invoices.find(
+                      invoice => invoice.payload?.id === status.id
+                    );
+                    invoice.status = status;
+                  }
+                  
+                );
+
+                if (r.operation_status?.code !== 200 && r.operation_status?.code !== 207) {
+                  throw r.operation_status;
+                }
+              }
+            ).catch(
+              error => {
+                if (error.message) {
+                  error = {
+                    ...error,
+                    message: 'On Invoice Send: ' + error.message,
+                  }
+                }
+                throw error;
+              }
+            );
           }
         }
-      );
+
+        if (response.operation_status?.code === 200 || response.operation_status?.code === 207) {
+          const submits = response.orders.filter(
+            order => order.status?.code === 200
+          ).map(
+            order => {
+              order.payload.order_state = OrderState.SUBMITTED;
+              return order.payload;
+            }
+          );
+  
+          await super.upsert(
+            OrderList.fromPartial({
+              items: submits,
+              total_count: submits.length,
+              subject: request.subject,
+            }),
+            context,
+          ).then(
+            r => r.items?.forEach(
+              item => response_map[item.payload?.id ?? item.status?.id] = item
+            )
+          );
+        }
+        else {
+          Object.values(response_map).forEach(
+            item => item.status = {
+              ...item.status,
+              ...response.operation_status
+            }
+          );
+        }
+  
+        Object.values(response_map).forEach(
+          item => {
+            if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
+              this.topic.emit(this.emitters['INVALID'], item);
+            }
+            else if (item.payload?.order_state in this.emitters) {
+              this.topic.emit(this.emitters[item.payload.order_state], item.payload);
+            }
+          }
+        );
+      }
+      catch (error: any) {
+        response.operation_status = this.catchOperationError(error)?.operation_status;
+      }
+      finally {
+        this.logger?.debug('Cleanup fulfillments of failed orders...');
+        const failed_ids = response.invoices?.filter(
+          invoice => invoice.status?.code !== 200
+        ).flatMap(
+          invoice => invoice.payload?.references?.map(
+            r => r.instance_id
+          )
+        ) ?? [];
+
+        if (this.fulfillment_service) {
+          const ids = (
+            response.operation_status?.code === 200
+              ? response.fulfillments?.filter(
+                fulfillment => fulfillment.payload?.references?.some(
+                  reference => failed_ids.includes(reference?.instance_id)
+                )
+              ) 
+              : response.fulfillments
+          ).map(
+            fulfillment => fulfillment.payload?.id ?? fulfillment.status?.id 
+          );
+
+          if (ids?.length) {
+            await this.fulfillment_service?.delete(
+              {
+                ids,
+                subject: this.fulfillment_tech_user,
+              },
+              context,
+            ).then(
+              r => {
+                if (r.operation_status?.code > response.operation_status?.code) {
+                  r.operation_status.message = 'On Fulfillment Clean Up: ' + r.operation_status.message;
+                  response.operation_status = r.operation_status;
+                }
+              }
+            ).catch(
+              error => {
+                if (error.message) {
+                  error.message = 'On Fulfillment Clean Up: ' + error.message
+                }
+                throw error;
+              }
+            );
+
+            response.fulfillments = response.fulfillments?.filter(
+              fulfillment => !ids.includes(fulfillment.payload?.id)
+            );
+          }
+        }
+      }
 
       response.orders = request.items.map(item => response_map[item.id]);
       return response;
@@ -2380,12 +2516,6 @@ export class OrderingService
         }
       }
 
-      orders ??= await this.getOrderMap(
-        request.items?.map(item => item.order_id!),
-        request.subject,
-        context
-      ) ?? {};
-
       const prototypes = await this.toFulfillmentResponsePrototypes(
         request,
         context,
@@ -2468,21 +2598,17 @@ export class OrderingService
         }
       }
 
-      const evaluated = await this._evaluateFulfillment(
+      const prototypes = await this.toFulfillmentResponsePrototypes(
         request,
         context,
         orders,
       );
 
-      if (evaluated?.operation_status?.code >= 300) {
-        throw evaluated.operation_status;
-      }
-
-      const invalids = evaluated?.items?.filter(
+      const invalids = prototypes.filter(
         item => item.status?.code !== 200
       );
 
-      const valids = evaluated?.items?.filter(
+      const valids = prototypes.filter(
         item => item.status?.code === 200
       ).map(
         item => {
@@ -2495,7 +2621,7 @@ export class OrderingService
         }
       );
 
-      const created = valids?.length ? await this.fulfillment_service.create(
+      const created = valids.length ? await this.fulfillment_service.create(
         {
           items: valids.map(item => item.payload),
           total_count: valids.length,
@@ -2557,26 +2683,10 @@ export class OrderingService
   ): Promise<FulfillmentListResponse> {
     if (!request.items?.length) {
       return {
-        items: [],
         operation_status: this.operation_status_codes.SUCCESS
       }
     }
 
-    const order_map = request?.items?.reduce(
-      (a, b) => {
-        a[b.id] = { 
-          payload: b,
-          status: this.createStatusCode(
-            b.id,
-            'order',
-            this.status_codes.OK,
-            b.id
-          ),
-        } as OrderResponse;
-        return a;
-      },
-      {} as OrderMap
-    ) ?? {};
     const fulfillment_request: FulfillmentRequestList = {
       ...request,
       items: request.items?.map(
@@ -2588,7 +2698,6 @@ export class OrderingService
     return this._evaluateFulfillment(
       fulfillment_request,
       context,
-      order_map
     ).then(
       resp => ({
         ...resp,
@@ -2625,41 +2734,24 @@ export class OrderingService
   public async triggerFulfillment(
     request: FulfillmentRequestList,
     context?: any
-  ): Promise<FulfillmentListResponse> {
+  ): Promise<StatusListResponse> {
     try {
-      const responseMap = request.items?.reduce(
-        (a, b) => {
-          a[b.order_id!] = {};
-          return a;
-        },
-        {} as { [key: string]: FulfillmentResponse }
-      ) ?? {};
-
-      const items = await this.toFulfillmentResponsePrototypes(
+      const prototypes = await this.toFulfillmentResponsePrototypes(
         request,
         context
-      ).then(
-        prototypes => {
-          return prototypes.filter(
-            item => {
-              if (item.status?.id in responseMap) {
-                responseMap[item.status?.id].status = item.status as Status;
-              }
-              return item.status?.code === 200;
-            }
-          ).map(
-            item => item.payload
-          );
-        }
       );
-
-      const fulfillmentList = DefaultMetaDataInjector(
+      const valids = prototypes.filter(
+        proto => proto.status?.code === 200
+      ).map(
+        proto => proto.payload!
+      );
+      const fulfillmentList = await DefaultMetaDataInjector(
         this,
         {
-          items,
-          total_count: items.length,
+          items: valids,
+          total_count: valids.length,
           subject: request.subject
-        } as FulfillmentList
+        }
       );
 
       this.logger.debug('Emit Fulfillment request', { fulfillmentList });
@@ -2667,12 +2759,8 @@ export class OrderingService
       this.logger.info('Fulfillment request emitted successfully', { fulfillmentList });
 
       return {
-        items: Object.values(responseMap),
-        total_count: request.total_count,
-        operation_status: {
-          code: 200,
-          message: 'Fulfillment request emitted successfully',
-        },
+        status: prototypes?.map(item => item.status),
+        operation_status: this.operation_status_codes.SUCCESS,
       };
     }
     catch (e) {
@@ -2683,8 +2771,10 @@ export class OrderingService
   private async toInvoiceResponsePrototypes(
     request: OrderingInvoiceRequestList,
     context?: any,
+    order_map?: OrderMap,
+    fulfillment_map?: FulfillmentMap,
   ): Promise<InvoiceResponse[]> {
-    const order_map = await this.getOrderMap(
+    order_map ??= await this.getOrderMap(
       request.items?.flatMap(
         item => item.sections?.map(
           section => section.order_id
@@ -2694,7 +2784,7 @@ export class OrderingService
       context,
     );
 
-    const fulfillment_map = await this.getFulfillmentMap(
+    fulfillment_map ??= await this.getFulfillmentMap(
       request.items?.flatMap(
         item => item.sections?.map(
           section => section.order_id
@@ -2709,7 +2799,6 @@ export class OrderingService
         const master = order_map[item.sections?.[0]?.order_id];
         if (master?.status?.code !== 200) {
           return {
-            payload: undefined,
             status: master?.status ?? this.createStatusCode(
               item.sections?.[0]?.order_id,
               this.entityName,
@@ -2738,7 +2827,6 @@ export class OrderingService
             order.payload?.shop_id !== master?.payload?.shop_id
           ) {
             return {
-              payload: undefined,
               status: this.createStatusCode(
                 section.order_id,
                 typeof(order.payload),
@@ -2873,14 +2961,16 @@ export class OrderingService
     ) ?? [];
   }
 
-  private async _createInvoice(
+  private async doInvoice(
+    action: (request: InvoiceList, context?: any) => Promise<InvoiceListResponse>,
     request: OrderingInvoiceRequestList,
     context?: any,
+    order_map?: OrderMap,
+    fulfillment_map?: FulfillmentMap,
   ): Promise<InvoiceListResponse> {
     try {
       if (!request.items?.length) {
         return {
-          items: [],
           operation_status: this.operation_status_codes.SUCCESS
         }
       }
@@ -2888,19 +2978,29 @@ export class OrderingService
       const prototypes = await this.toInvoiceResponsePrototypes(
         request,
         context,
+        order_map,
+        fulfillment_map,
       );
       const invalids = prototypes.filter(
         proto => proto.status?.code !== 200
       );
       const valids = prototypes.filter(
         proto => proto.status?.code === 200
-      ).map(
-        proto => proto.payload!
-      );
+      )
 
-      const response = await this.invoice_service.create(
+      if (valids.length === 0) {
+        return {
+          items: prototypes,
+          total_count: prototypes.length,
+          operation_status: this.operation_status_codes.INVALID_INVOICES,
+        };
+      }
+
+      const response = await action(
         {
-          items: valids,
+          items: valids.map(
+            v => v.payload
+          ),
           total_count: valids.length,
           subject: this.invoice_tech_user ?? request.subject,
         },
@@ -2909,11 +3009,11 @@ export class OrderingService
 
       return {
         items: [
-          ...response.items!,
+          ...(response?.items ?? []),
           ...invalids
         ],
-        total_count: response.items?.length + invalids.length,
-        operation_status: invalids.length
+        total_count: valids.length + invalids.length,
+        operation_status: (response.operation_status.code === 200 && invalids.length)
           ? this.createOperationStatusCode(
             this.operation_status_codes.PARTIAL,
             'Invoice',
@@ -2924,6 +3024,36 @@ export class OrderingService
     catch (e) {
       return this.catchOperationError(e);
     }
+  };
+
+  private async _createInvoice(
+    request: OrderingInvoiceRequestList,
+    context?: any,
+    order_map?: OrderMap,
+    fulfillment_map?: FulfillmentMap,
+  ): Promise<InvoiceListResponse> {
+    return this.doInvoice(
+      this.invoice_service.create,
+      request,
+      context,
+      order_map,
+      fulfillment_map,
+    );
+  };
+
+  private async _renderInvoice(
+    request: OrderingInvoiceRequestList,
+    context?: any,
+    order_map?: OrderMap,
+    fulfillment_map?: FulfillmentMap,
+  ): Promise<InvoiceListResponse> {
+    return this.doInvoice(
+      this.invoice_service.render,
+      request,
+      context,
+      order_map,
+      fulfillment_map,
+    );
   };
 
   @resolves_subject()
@@ -2940,59 +3070,6 @@ export class OrderingService
     context?: any,
   ): Promise<InvoiceListResponse> {
     return await this._createInvoice(request, context);
-  };
-
-  private async _renderInvoice(
-    request: OrderingInvoiceRequestList,
-    context?: any,
-  ): Promise<InvoiceListResponse> {
-    try {
-      if (!request.items?.length) {
-        return {
-          items: [],
-          operation_status: this.operation_status_codes.SUCCESS
-        }
-      }
-
-      const prototypes = await this.toInvoiceResponsePrototypes(
-        request,
-        context,
-      );
-      const invalids = prototypes.filter(
-        proto => proto.status?.code !== 200
-      );
-      const valids = prototypes.filter(
-        proto => proto.status?.code === 200
-      ).map(
-        proto => proto.payload!
-      );
-
-      const response = await this.invoice_service.render(
-        {
-          items: valids,
-          total_count: valids.length,
-          subject: this.invoice_tech_user ?? request.subject,
-        },
-        context
-      );
-
-      return {
-        items: [
-          ...response.items!,
-          ...invalids
-        ],
-        total_count: response.items?.length + invalids.length,
-        operation_status: invalids.length
-          ? this.createOperationStatusCode(
-            this.operation_status_codes.PARTIAL,
-            'Invoice',
-          )
-          : response.operation_status,
-      };
-    }
-    catch (e) {
-      return this.catchOperationError(e);
-    }
   };
 
   @resolves_subject()
@@ -3024,6 +3101,42 @@ export class OrderingService
     request: OrderingInvoiceRequestList,
     context?: any,
   ): Promise<StatusListResponse> {
-    throw 'Not yet implemented!';
+    try {
+      if (!request.items?.length) {
+        return {
+          operation_status: this.operation_status_codes.SUCCESS
+        }
+      }
+
+      const prototypes = await this.toInvoiceResponsePrototypes(
+        request,
+        context,
+      );
+      const valids = prototypes.filter(
+        proto => proto.status?.code === 200
+      ).map(
+        proto => proto.payload
+      );
+      const invoiceList = await DefaultMetaDataInjector(
+        this,
+        {
+          items: valids,
+          total_count: valids.length,
+          subject: request.subject
+        }
+      );
+
+      this.logger.debug('Emit Invoice Request', { invoiceList });
+      await this.topic.emit(this.emitters['CREATE_INVOICE'] ?? CREATE_INVOICE, invoiceList);
+      this.logger.info('Fulfillment request emitted successfully', { invoiceList });
+
+      return {
+        status: prototypes?.map(item => item.status),
+        operation_status: this.operation_status_codes.SUCCESS,
+      };
+    }
+    catch (e) {
+      return this.catchOperationError(e);
+    }
   };
 }
