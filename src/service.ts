@@ -2850,7 +2850,6 @@ export class OrderingService
               })
             ),
             customer_remark: master.payload?.customer_remark,
-            sender: master.payload?.billing_address,
             recipient: master.payload?.billing_address,
             total_amounts: master.payload?.total_amounts,
             sections: item.sections?.map(
