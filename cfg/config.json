@@ -140,6 +140,15 @@
       "flushCacheResponse": {
         "messageObject": "io.restorecommerce.commandinterface.CommandResponse"
       },
+      "renderRequest": {
+        "messageObject": "io.restorecommerce.rendering.RenderRequest"
+      },
+      "renderResponse": {
+        "messageObject": "io.restorecommerce.rendering.RenderResponse"
+      },
+      "sendEmail": {
+        "messageObject": "io.restorecommerce.notification_req.NotificationReq"
+      },
       "topics": {
         "command": {
           "topic": "io.restorecommerce.command",
@@ -156,6 +165,12 @@
           "topic": "io.restorecommerce.jobs",
           "events": {
             "queuedJob": "handleQueuedJob"
+          }
+        },
+        "rendering": {
+          "topic": "io.restorecommerce.rendering",
+          "events": {
+            "renderResponse": "handleRenderResponse"
           }
         },
         "ordering.resource": {
@@ -178,61 +193,80 @@
       "address": "localhost:50061"
     },
     "user": {
+      "fullName": "io.restorecommerce.user.UserService",
       "address": "localhost:50051"
     },
     "product": {
+      "fullName": "io.restorecommerce.product.ProductService",
       "address": "localhost:50068"
     },
-    "contact_point": {
-      "address": "localhost:50053"
+    "manufacturer": {
+      "fullName": "io.restorecommerce.manufacturer.ManufacturerService",
+      "address": "localhost:50068"
     },
     "address": {
+      "fullName": "io.restorecommerce.address.AddressService",
       "address": "localhost:50053"
     },
     "country": {
-      "address": "localhost:50053"
-    },
-    "currency": {
+      "fullName": "io.restorecommerce.country.CountryService",
       "address": "localhost:50053"
     },
     "tax": {
-      "address": "localhost:50053"
-    },
-    "tax_type": {
+      "fullName": "io.restorecommerce.tax.TaxService",
       "address": "localhost:50053"
     },
     "customer": {
+      "fullName": "io.restorecommerce.customer.CustomerService",
       "address": "localhost:50053"
     },
     "shop": {
+      "fullName": "io.restorecommerce.shop.ShopService",
       "address": "localhost:50053"
     },
     "organization": {
+      "fullName": "io.restorecommerce.organization.OrganizationService",
       "address": "localhost:50053"
     },
+    "contact_point": {
+      "fullName": "io.restorecommerce.contact_point.ContactPointService",
+      "address": "localhost:50053"
+    },
+    "template": {
+      "fullName": "io.restorecommerce.template.TemplateService",
+      "address": "localhost:50053"
+    },
+    "setting": {
+      "fullName": "io.restorecommerce.setting.SettingService",
+      "address": "localhost:50053"
+    },
+    "currency": {
+      "fullName": "io.restorecommerce.currency.CurrencyService",
+      "address": "localhost:50053"
+    },
+    "ostorage": {
+      "fullName": "io.restorecommerce.ostorage.OstorageService",
+      "address": "localhost:50066"
+    },
     "fulfillment": {
-      "disabled": false,
+      "fullName": "io.restorecommerce.fulfillment.FulfillmentService",
       "address": "localhost:50067",
-      "tech_user": {
-        "id": "root_tech_user",
-        "token": "1a4c6789-6435-487a-9308-64d06384acf9"
-      }
+      "disabled": false
     },
     "fulfillment_product": {
-      "disabled": false,
+      "fullName": "io.restorecommerce.fulfillment_product.FulfillmentProductService",
       "address": "localhost:50067",
-      "tech_user": {
-        "id": "root_tech_user",
-        "token": "1a4c6789-6435-487a-9308-64d06384acf9"
-      }
+      "disabled": false
     },
     "invoice": {
-      "disabled": false,
+      "fullName": "io.restorecommerce.invoice.InvoiceService",
       "address": "localhost:50077",
-      "tech_user": {
-        "id": "root_tech_user",
-        "token": "1a4c6789-6435-487a-9308-64d06384acf9"
-      }
+      "disabled": false
+    },
+    "notification_req": {
+      "fullName": "io.restorecommerce.notification_req.NotificationReqService",
+      "address": "localhost:50052",
+      "disabled": false
     }
   },
   "server": {
@@ -369,6 +403,46 @@
       "shop_invoice_render_enabled": true,
       "shop_invoice_send_enabled": false,
       "shop_order_error_cleanup_enabled": true
-    }
+    },
+    "Templates": [
+      {
+        "body": {
+          "url": "file://./templates/order_confirmation_subject.hbs"
+        },
+        "layout": {
+          "url": "file://./templates/order_layout.hbs"
+        },
+        "localization": [
+          {
+            "local_codes": ["en"],
+            "l10n": {
+              "url": "file://./templates/l10n.csv",
+              "content_type": "text/csv"
+            }
+          }
+        ],
+        "ordinal": 0,
+        "use_case": "ORDER_CONFIRMATION"
+      },
+      {
+        "body": {
+          "url": "file://./templates/order_confirmation_body.hbs"
+        },
+        "layout": {
+          "url": "file://./templates/order_layout.hbs"
+        },
+        "localization": [
+          {
+            "local_codes": ["en"],
+            "l10n": {
+              "url": "file://./templates/l10n.csv",
+              "content_type": "text/csv"
+            }
+          }
+        ],
+        "ordinal": 1,
+        "use_case": "ORDER_CONFIRMATION"
+      }
+    ]
   }
 }

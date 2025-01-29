@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import { parse as CSV } from 'csv-parse/sync';
 import { BigNumber } from 'bignumber.js';
 import { Logger } from '@restorecommerce/logger';
 import { ServiceConfig } from '@restorecommerce/service-config';
@@ -22,10 +24,6 @@ import {
   injects_meta_data,
   resolves_subject,
 } from '@restorecommerce/acs-client';
-import {
-  ResourcesAPIBase,
-  ServiceBase,
-} from '@restorecommerce/resource-base-interface';
 import { Topic } from '@restorecommerce/kafka-client';
 import {
   OrderList,
@@ -44,7 +42,6 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order.js';
 import {
   Product,
-  ProductResponse,
   ProductServiceDefinition,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/product.js';
 import {
@@ -67,7 +64,6 @@ import {
   Item as FulfillmentItem,
   FulfillmentListResponse,
   FulfillmentResponse,
-  FulfillmentList,
   Packaging,
   Parcel,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment.js';
@@ -85,10 +81,10 @@ import {
 import {
   DeleteRequest,
   Filter_ValueType,
-  ReadRequest,
+  ResourceListResponse,
+  ResourceResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import {
-  OperationStatus,
   Status,
   StatusListResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/status.js';
@@ -103,47 +99,86 @@ import {
 import {
   VAT
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/amount.js';
-import { Subject } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth.js';
-import { AddressServiceDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/address.js';
-import { CountryServiceDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/country.js';
-import { CurrencyServiceDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/currency.js';
-import { Setting, SettingServiceDefinition } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/setting.js';
 import {
-  AddressMap,
+  Subject
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth.js';
+import {
+  AddressServiceDefinition
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/address.js';
+import {
+  CountryServiceDefinition
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/country.js';
+import {
+  CurrencyServiceDefinition
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/currency.js';
+import {
+  NotificationReqServiceDefinition,
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/notification_req.js';
+import {
+  Setting,
+  SettingServiceDefinition
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/setting.js';
+import {
+  Payload,
+  RenderRequest,
+  RenderResponse,
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/rendering.js';
+import {
+  ManufacturerServiceDefinition
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/manufacturer.js';
+import {
+  UserServiceDefinition
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/user.js';
+import {
+  Template,
+  TemplateServiceDefinition,
+  TemplateUseCase
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/template.js';
+import {
+  AccessControlledServiceBase
+} from './experimental/AccessControlledServiceBase.js';
+import {
+  ResourceAwaitQueue,
+  ClientRegister,
+  ResourceAggregator,
+  ResourceMap,
+} from './experimental/index.js';
+import {
   BigAmount,
   BigVAT,
-  ContactPointMap,
-  CountryMap,
-  CRUDClient,
-  CurrencyMap,
-  CustomerMap,
   DefaultUrns,
   FulfillmentMap,
   FulfillmentSolutionMap,
   ResolvedSettingMap,
-  OrderMap,
-  OrganizationMap,
-  PositionMap,
-  ProductMap,
   ProductNature,
   ProductVariant,
   RatioedTax,
-  RatioedTaxMap,
-  SettingMap,
-  ShopMap,
   toObjectMap,
+  toObjectListMap,
   VATMap,
   parseSetting,
   ResolvedSetting,
   DefaultSetting,
-  toObjectListMap,
+  AggregationTemplate,
+  AggregatedOrderListResponse,
+  resolveCustomerAddress,
+  marshallProtobufAny,
+  packRenderData,
+  createOperationStatusCode,
+  createStatusCode,
+  throwStatusCode,
+  resolveOrder,
+  OrderMap,
+  PositionMap,
 } from './utils.js';
 
+
 const CREATE_FULFILLMENT = 'createFulfillment';
+const CREATE_INVOICE = 'createInvoice';
 
 @access_controlled_service
 export class OrderingService
-  extends ServiceBase<OrderListResponse, OrderList>
+  extends AccessControlledServiceBase<OrderListResponse, OrderList>
   implements OrderServiceImplementation
 {
   private static async ACSContextFactory(
@@ -154,7 +189,7 @@ export class OrderingService
     const ids = request.ids ?? request.items?.map(
       (item: Order & FulfillmentRequest & OrderingInvoiceRequest) => item.id ?? item.order_id
     ) ?? [] as string[];
-    const resources = await self.getOrdersById(ids, request.subject!, context);
+    const resources = await self.get(ids, request.subject!, context);
     return {
       ...context,
       subject: request.subject,
@@ -211,10 +246,22 @@ export class OrderingService
       id: '',
       code: 404,
       message: 'Solution for {entity} {id} not found!',
-    }
+    },
+    CONTENT_NOT_SUPPORTED: {
+      code: 400,
+      message: '{entity} {id}: Content type {error} is not supported!',
+    },
+    PROTOCOL_NOT_SUPPORTED: {
+      code: 400,
+      message: '{entity} {id}: Protocol of {error} is not supported!',
+    },
+    FETCH_FAILED: {
+      code: 500,
+      message: '{entity} {id}: {error}!',
+    },
   };
 
-  private readonly operation_status_codes = {
+  protected readonly operation_status_codes = {
     SUCCESS: {
       code: 200,
       message: 'SUCCESS',
@@ -243,25 +290,26 @@ export class OrderingService
       code: 500,
       message: 'Invalid invoices!'
     },
+    NO_TEMPLATES: {
+      code: 500,
+      message: 'No render templates defined!',
+    },
+    TIMEOUT: {
+      code: 500,
+      message: 'Request timeout, API not responding!',
+    },
   };
 
   protected readonly emitters: any;
-  protected readonly fulfillment_tech_user?: Subject;
-  protected readonly invoice_tech_user?: Subject;
-  protected readonly product_service: Client<ProductServiceDefinition>;
-  protected readonly tax_service: Client<TaxServiceDefinition>;
-  protected readonly customer_service: Client<CustomerServiceDefinition>;
-  protected readonly shop_service: Client<ShopServiceDefinition>;
-  protected readonly organization_service: Client<OrganizationServiceDefinition>;
-  protected readonly contact_point_service: Client<ContactPointServiceDefinition>;
-  protected readonly address_service: Client<AddressServiceDefinition>;
-  protected readonly country_service: Client<CountryServiceDefinition>;
-  protected readonly setting_service: Client<SettingServiceDefinition>;
-  protected readonly currency_service: Client<CurrencyServiceDefinition>;
+  protected readonly tech_user: Subject;
   protected readonly fulfillment_service?: Client<FulfillmentServiceDefinition>;
   protected readonly fulfillment_product_service?: Client<FulfillmentProductServiceDefinition>;
   protected readonly invoice_service?: Client<InvoiceServiceDefinition>;
+  protected readonly notification_service: Client<NotificationReqServiceDefinition>;
+  protected readonly awaits_render_result = new ResourceAwaitQueue<string[]>;
   protected readonly default_setting: ResolvedSetting;
+  protected readonly default_templates: Template[] = [];
+  protected readonly kafka_timeout = 5000;
   protected readonly contact_point_type_ids = {
     legal: 'legal',
     shipping: 'shipping',
@@ -277,25 +325,22 @@ export class OrderingService
   }
 
   constructor(
-    protected readonly topic: Topic,
+    protected readonly orderingTopic: Topic,
+    protected readonly renderingTopic: Topic,
     protected readonly db: database.DatabaseProvider,
     public readonly cfg: ServiceConfig,
     logger: Logger,
+    client_register = new ClientRegister(cfg, logger),
+    protected readonly aggregator = new ResourceAggregator(cfg, logger, client_register),
   ) {
     super(
       cfg.get('database:main:entities:0') ?? 'order',
-      topic,
+      orderingTopic,
+      db,
+      cfg,
       logger,
-      new ResourcesAPIBase(
-        db,
-        cfg.get('database:main:collections:0') ?? 'orders',
-        cfg.get('fieldHandlers'),
-        undefined,
-        undefined,
-        logger,
-        cfg.get('database:main:entities:0') ?? 'order',
-      ),
       cfg.get('events:enableEvents')?.toString() === 'true',
+      cfg.get('database:main:collections:0') ?? 'orders',
     );
 
     this.urns = {
@@ -303,126 +348,33 @@ export class OrderingService
       ...cfg.get('urns'),
       ...cfg.get('authentication:urns'),
     };
-
     this.status_codes = {
       ...this.status_codes,
-      ...cfg.get('statusCodes'),
+      ...cfg.get('statusCodes')
     };
-
     this.operation_status_codes = {
       ...this.operation_status_codes,
       ...cfg.get('operationStatusCodes'),
     };
-
     this.emitters = cfg.get('events:emitters');
     this.contact_point_type_ids = {
       ...this.contact_point_type_ids,
-      ...cfg.get('contactPointTypeIds')
+      ...cfg.get('contactPointTypeIds'),
     };
-
-    this.product_service = createClient(
-      {
-        ...cfg.get('client:product'),
-        logger
-      } as GrpcClientConfig,
-      ProductServiceDefinition,
-      createChannel(cfg.get('client:product:address'))
-    );
-
-    this.tax_service = createClient(
-      {
-        ...cfg.get('client:tax'),
-        logger
-      } as GrpcClientConfig,
-      TaxServiceDefinition,
-      createChannel(cfg.get('client:tax:address'))
-    );
-
-    this.customer_service = createClient(
-      {
-        ...cfg.get('client:customer'),
-        logger
-      } as GrpcClientConfig,
-      CustomerServiceDefinition,
-      createChannel(cfg.get('client:customer:address'))
-    );
-
-    this.shop_service = createClient(
-      {
-        ...cfg.get('client:shop'),
-        logger
-      } as GrpcClientConfig,
-      ShopServiceDefinition,
-      createChannel(cfg.get('client:shop:address'))
-    );
-
-    this.organization_service = createClient(
-      {
-        ...cfg.get('client:organization'),
-        logger
-      } as GrpcClientConfig,
-      OrganizationServiceDefinition,
-      createChannel(cfg.get('client:organization:address'))
-    );
-
-    this.contact_point_service = createClient(
-      {
-        ...cfg.get('client:contact_point'),
-        logger
-      } as GrpcClientConfig,
-      ContactPointServiceDefinition,
-      createChannel(cfg.get('client:contact_point:address'))
-    );
-
-    this.address_service = createClient(
-      {
-        ...cfg.get('client:address'),
-        logger
-      } as GrpcClientConfig,
-      AddressServiceDefinition,
-      createChannel(cfg.get('client:address:address'))
-    );
-
-    this.currency_service = createClient(
-      {
-        ...cfg.get('client:currency'),
-        logger
-      } as GrpcClientConfig,
-      CurrencyServiceDefinition,
-      createChannel(cfg.get('client:currency:address'))
-    );
-
-    this.country_service = createClient(
-      {
-        ...cfg.get('client:country'),
-        logger
-      } as GrpcClientConfig,
-      CountryServiceDefinition,
-      createChannel(cfg.get('client:country:address'))
-    );
-
-    this.setting_service = createClient(
-      {
-        ...cfg.get('client:setting'),
-        logger
-      } as GrpcClientConfig,
-      SettingServiceDefinition,
-      createChannel(cfg.get('client:setting:address'))
-    );
-
     this.default_setting = {
       ...DefaultSetting,
-      ...(cfg.get('default:Setting') ?? {}),
-    }
+      ...cfg.get('default:Setting'),
+    };
+
+    this.tech_user = cfg.get('authorization:techUser');
 
     // optional Fulfillment
     const fulfillment_cfg = cfg.get('client:fulfillment');
     if (fulfillment_cfg.disabled?.toString() === 'true') {
-      this.logger.warn('Fulfillment-srv disabled!');
+      this.logger.info('Fulfillment-srv disabled!');
     }
     else if (fulfillment_cfg) {
       this.logger.debug('Fulfillment-srv enabled.', fulfillment_cfg);
-      this.fulfillment_tech_user = fulfillment_cfg.tech_user;
       this.fulfillment_service = createClient(
         {
           ...fulfillment_cfg,
@@ -438,7 +390,7 @@ export class OrderingService
 
     const fulfillment_product_cfg = cfg.get('client:fulfillment_product');
     if (fulfillment_product_cfg.disabled?.toString() === 'true') {
-      this.logger.warn('Fulfillment-Product-srv disabled!');
+      this.logger.info('Fulfillment-Product-srv disabled!');
     }
     else if (fulfillment_product_cfg) {
       this.logger.debug('Fulfillment-Product-srv enabled.', fulfillment_product_cfg);
@@ -455,12 +407,29 @@ export class OrderingService
       this.logger.warn('fulfillment_product config is missing!');
     }
 
+    const notification_cfg = cfg.get('client:notification_req');
+    if (notification_cfg.disabled?.toString() === 'true') {
+      this.logger.info('Notification-srv disabled!');
+    }
+    else if (notification_cfg) {
+      this.notification_service = createClient(
+        {
+          ...notification_cfg,
+          logger
+        } as GrpcClientConfig,
+        NotificationReqServiceDefinition,
+        createChannel(notification_cfg.address)
+      );
+    }
+    else {
+      this.logger.warn('notification config is missing!');
+    }
+
     const invoicing_cfg = cfg.get('client:invoice');
     if (invoicing_cfg.disabled?.toString() === 'true') {
-      // ignore!
+      this.logger.info('Invoicing-srv disabled!');
     }
     else if (invoicing_cfg) {
-      this.invoice_tech_user = invoicing_cfg.tech_user;
       this.invoice_service = createClient(
         {
           ...invoicing_cfg,
@@ -475,92 +444,25 @@ export class OrderingService
     }
   }
 
-  private createStatusCode(
-    id?: string,
-    entity?: string,
-    status?: Status,
-    entity_id?: string,
-    error?: string,
-  ): Status {
-    return {
-      id,
-      code: status?.code ?? 500,
-      message: status?.message?.replace(
-        '{error}', error ?? 'undefined'
-      ).replace(
-        '{entity}', entity ?? 'undefined'
-      ).replace(
-        '{id}', entity_id ?? 'undefined'
-      ) ?? 'Unknown status',
+  private catchStatusError<T extends ResourceResponse>(e?: any, item?: T): T {
+    item ??= {} as T;
+    item.status = {
+      id: item?.payload?.id,
+      code: Number.isInteger(e?.code) ? e?.code : 500,
+      message: e?.message ?? e?.details ?? (e ? JSON.stringify(e) : 'Unknown Error!')
     };
+    this.logger?.warn(e?.stack, item);
+    return item;
   }
 
-  private createOperationStatusCode(
-    status?: OperationStatus,
-    entity?: string,
-    id?: string,
-  ): OperationStatus {
-    return {
-      code: status?.code ?? 500,
-      message: status?.message?.replace(
-        '{entity}', entity ?? 'undefined'
-      ).replace(
-        '{id}', id ?? 'undefined'
-      ) ?? 'Unknown status',
+  private catchOperationError<T extends ResourceListResponse>(e?: any, response?: T): T {
+    response ??= {} as T;
+    response.operation_status = {
+      code: e?.code ?? 500,
+      message: e?.message ?? e?.details ?? (e ? JSON.stringify(e) : 'Unknown Error!'),
     };
-  }
-
-  private catchOperationError(e: any) {
-    const error = {
-      items: [] as any[],
-      total_count: 0,
-      operation_status: {
-        code: e?.code ?? 500,
-        message: e?.message ?? e?.details ?? (e ? JSON.stringify(e) : 'Unknown Error!'),
-      }
-    };
-    this.logger?.error(error);
-    return error;
-  }
-
-  private async getOrdersById(
-    ids: (string | undefined)[] | undefined,
-    subject?: Subject,
-    context?: any
-  ): Promise<OrderListResponse> {
-    const order_ids = [...new Set(ids)].filter(
-      ids => ids
-    );
-
-    if (order_ids.length === 0) {
-      throw this.createOperationStatusCode(
-        this.operation_status_codes.NO_ITEM,
-        this.name,
-      );
-    }
-
-    if (order_ids.length > 1000) {
-      throw this.createOperationStatusCode(
-        this.operation_status_codes.LIMIT_EXHAUSTED,
-        this.name,
-      );
-    }
-
-    const call = ReadRequest.fromPartial(
-      {
-        filters: [{
-          filters: [{
-            field: '_key',
-            operation: Filter_Operation.in,
-            value: JSON.stringify(order_ids),
-            type: Filter_ValueType.ARRAY,
-          }]
-        }],
-        limit: order_ids.length,
-        subject,
-      }
-    );
-    return await super.read(call, context);
+    this.logger?.error(e?.stack, response);
+    return response;
   }
 
   private getOrderMap(
@@ -568,7 +470,7 @@ export class OrderingService
     subject?: Subject,
     context?: any,
   ): Promise<OrderMap> {
-    return this.getOrdersById(
+    return this.get(
       ids,
       subject,
       context
@@ -584,59 +486,290 @@ export class OrderingService
     );
   }
 
-  private async mapBundles(products: ProductMap) {
-    const product_ids = [...new Set(Object.values(products).filter(
-      (product) => !!product.payload?.bundle
+  protected async aggregateProductBundles(
+    products: ResourceMap<Product>,
+    output?: ResourceMap<Product>,
+  ): Promise<ResourceMap<Product>> {
+    output ??= products;
+    const ids = products?.all.filter(
+      p => p.bundle
     ).flatMap(
-      (product) => product.payload?.bundle?.products?.map(
-        (item) => item.product_id
+      p => p.bundle.products.map(
+        p => p.product_id
       )
     ).filter(
-      id => !!products[id!]
-    )).values()];
+      id => !output.has(id)
+    );
 
-    if (product_ids.length) {
-      await this.product_service.read({
-        filters: [{
-          filters: [{
-            field: 'id',
-            operation: Filter_Operation.in,
-            value: JSON.stringify(product_ids),
-            type: Filter_ValueType.ARRAY,
-          }]
-        }],
-        limit: product_ids.length,
-      }).then(
-        response => {
-          if (response.operation_status?.code !== 200) {
-            throw response.operation_status;
-          }
-          else if (response.items?.length !== product_ids.length) {
-            const found = response.items?.map(item => item.payload?.id);
-            const missing = product_ids.filter(
-              id => !found.includes(id)
-            );
-            throw this.createOperationStatusCode(
-              this.operation_status_codes.ITEM_NOT_FOUND,
-              'products',
-              JSON.stringify(missing)
-            );
-          }
-          else {
-            response.items?.forEach(
-              item => products[item.payload?.id] = item
-            );
-          }
-        }
+    if (ids?.length) {
+      const bundled_products = await this.aggregator.getByIds<Product>(
+        ids,
+        ProductServiceDefinition
       );
 
-      await this.mapBundles(products);
+      bundled_products.forEach(
+        p => output.set(p.id, p)
+      );
+
+      await this.aggregateProductBundles(
+        bundled_products,
+        output,
+      );
     }
+    return output;
+  }
+
+  protected async aggregate(
+    orders: OrderListResponse,
+    subject?: Subject,
+    context?: any,
+  ): Promise<AggregatedOrderListResponse> {
+    const aggregation = await this.aggregator.aggregate(
+      orders,
+      [
+        {
+          service: ShopServiceDefinition,
+          map_by_ids: (orders) => orders.items?.map(
+            i => i.payload.shop_id
+          ),
+          container: 'shops',
+          entity: 'Shop',
+        },
+        {
+          service: CustomerServiceDefinition,
+          map_by_ids: (orders) => orders.items?.map(
+            i => i.payload.customer_id
+          ),
+          container: 'customers',
+          entity: 'Customer',
+        },
+        {
+          service: ProductServiceDefinition,
+          map_by_ids: (orders) => orders.items?.flatMap(
+            item => item.payload.items
+          )?.flatMap(
+            item => item?.product_id
+          ),
+          container: 'products',
+          entity: 'Product',
+        },
+      ],
+      {} as AggregationTemplate,
+      subject,
+      context,
+    ).then(
+      async aggregation => {
+        aggregation.products = await this.aggregateProductBundles(
+          aggregation.products
+        );
+        return aggregation;
+      }
+    ).then(
+      async aggregation => await this.aggregator.aggregate(
+        aggregation,
+        [
+          {
+            service: UserServiceDefinition,
+            map_by_ids: (aggregation) => [].concat(
+              aggregation.items?.map(item => item.payload.user_id),
+              aggregation.customers?.all.map(customer => customer.private?.user_id)
+            ),
+            container: 'users',
+            entity: 'User',
+          },
+          {
+            service: OrganizationServiceDefinition,
+            map_by_ids: (aggregation) => [].concat(
+              aggregation.customers?.all.map(
+                customer => customer.public_sector?.organization_id
+              ),
+              aggregation.customers?.all.map(
+                customer => customer.commercial?.organization_id
+              ),
+              aggregation.shops?.all.map(
+                shop => shop?.organization_id
+              ),
+            ),
+            container: 'organizations',
+            entity: 'Organization',
+          },
+          {
+            service: ManufacturerServiceDefinition,
+            map_by_ids: (aggregation) => aggregation.products?.all.map(
+              product => product!.product?.manufacturer_id
+            ),
+            container: 'manufacturers',
+            entity: 'Manufacturer',
+          },
+          {
+            service: TaxServiceDefinition,
+            map_by_ids: (aggregation) => aggregation.products?.all.flatMap(
+              product => [
+                product.product?.tax_ids,
+                product.product?.physical?.variants?.flatMap(
+                  variant => variant.tax_ids
+                ),
+                product.product?.virtual?.variants?.flatMap(
+                  variant => variant.tax_ids
+                ),
+                product.product?.service?.variants?.flatMap(
+                  variant => variant.tax_ids
+                ),
+              ].flatMap(ids => ids)
+            ),
+            container: 'taxes',
+            entity: 'Tax',
+          },
+          {
+            service: TemplateServiceDefinition,
+            map_by_ids: (aggregation) => aggregation.shops?.all.flatMap(
+              shop => shop?.template_ids
+            ),
+            container: 'templates',
+            entity: 'Template',
+          },
+          {
+            service: SettingServiceDefinition,
+            map_by_ids: (aggregation) => aggregation.shops?.all.map(
+              shop => shop?.setting_id
+            ),
+            container: 'settings',
+            entity: 'Setting',
+          },
+          {
+            service: CurrencyServiceDefinition,
+            map_by_ids: (aggregation) => aggregation.products.all.flatMap(
+              product => [
+                product.product?.physical?.templates?.map(
+                  t => t.price?.currency_id
+                ),
+                product.product?.physical?.variants?.map(
+                  t => t.price?.currency_id
+                ),
+                product.product?.virtual?.templates?.map(
+                  t => t.price?.currency_id
+                ),
+                product.product?.virtual?.variants?.map(
+                  t => t.price?.currency_id
+                ),
+                product.product?.service?.templates?.map(
+                  t => t.price?.currency_id
+                ),
+                product.product?.service?.variants?.map(
+                  t => t.price?.currency_id
+                ),
+              ].flatMap(ids => ids)
+            ),
+            container: 'currencies',
+            entity: 'Currency'
+          }
+        ],
+        {} as AggregationTemplate,
+        subject,
+        context,
+      )
+    ).then(
+      async aggregation => await this.aggregator.aggregate(
+        aggregation,
+        [
+          {
+            service: ContactPointServiceDefinition,
+            map_by_ids: (aggregation) => [
+              aggregation.customers.all.flatMap(
+                customer => customer.private?.contact_point_ids
+              ),
+              aggregation.organizations.all.flatMap(
+                organization => organization.contact_point_ids
+              )
+            ].flatMap(ids => ids),
+            container: 'contact_points',
+            entity: 'ContactPoint',
+          },
+        ],
+        {} as AggregationTemplate,
+        subject,
+        context,
+      )
+    ).then(
+      async aggregation => await this.aggregator.aggregate(
+        aggregation,
+        [
+          {
+            service: AddressServiceDefinition,
+            map_by_ids: (aggregation) => [].concat(
+              aggregation.contact_points.all.map(
+                cp => cp.physical_address_id
+              ),
+              aggregation.items.map(
+                item => item.payload?.billing_address?.address?.id
+              ),
+              aggregation.items.map(
+                item => item.payload?.shipping_address?.address?.id
+              ),
+            ),
+            container: 'addresses',
+            entity: 'Address',
+          },
+        ],
+        {} as AggregationTemplate,
+        subject,
+        context,
+      )
+    ).then(
+      async aggregation => await this.aggregator.aggregate(
+        aggregation,
+        [
+          {
+            service: CountryServiceDefinition,
+            map_by_ids: (aggregation) => [].concat(
+              aggregation.addresses.all.map(
+                a => a.country_id
+              ),
+              aggregation.taxes.all.map(
+                tax => tax.country_id
+              ),
+              aggregation.currencies.all.flatMap(
+                currency => currency.country_ids
+              ),
+            ),
+            container: 'countries',
+            entity: 'Country',
+          },
+        ],
+        {} as AggregationTemplate,
+        subject,
+        context,
+      )
+    ).then(
+      aggregation => {
+        aggregation.items?.forEach(
+          item => {
+            try {
+              item.payload.shipping_address ??= resolveCustomerAddress(
+                item.payload,
+                aggregation,
+                this.contact_point_type_ids.shipping,
+              );
+              item.payload.billing_address ??= resolveCustomerAddress(
+                item.payload,
+                aggregation,
+                this.contact_point_type_ids.billing,
+              );
+            }
+            catch (e: any) {
+              this.catchStatusError(e, item);
+            }
+          }
+        );
+        return aggregation;
+      }
+    );
+    return aggregation;
   }
 
   private mergeProductVariantRecursive(
-    nature: ProductNature,
-    variant_id: string,
+    nature?: ProductNature,
+    variant_id?: string,
   ): ProductVariant {
     const variant = nature?.templates?.find(
       v => v.id === variant_id
@@ -644,7 +777,7 @@ export class OrderingService
       v => v.id === variant_id
     );
     if (!variant) {
-      throw this.createStatusCode(
+      throw createStatusCode(
         undefined,
         'Variant',
         this.status_codes.ITEM_NOT_FOUND,
@@ -653,7 +786,8 @@ export class OrderingService
     }
     if (variant?.parent_variant_id) {
       const template = this.mergeProductVariantRecursive(
-        nature, variant.parent_variant_id
+        nature,
+        variant.parent_variant_id
       );
       return {
         ...template,
@@ -666,19 +800,19 @@ export class OrderingService
   };
 
   private flatMapProductToFulfillmentItem(
-    products: ProductMap,
+    aggreation: AggregatedOrderListResponse,
     product_id: string,
     variant_id?: string,
     quantity = 1
   ): FulfillmentItem[] {
-    const main = products[product_id]?.payload;
+    const main = aggreation.products.get(product_id);
     if (main?.product?.physical) {
       const variant = this.mergeProductVariantRecursive(
         main.product.physical,
         variant_id
       );
       if (!variant) {
-        throw this.createStatusCode(
+        throw createStatusCode(
           variant_id,
           'Product Variant',
           this.status_codes.ITEM_NOT_FOUND,
@@ -703,7 +837,7 @@ export class OrderingService
     else if (main?.bundle?.products) {
       return main.bundle.products.flatMap(
         item => this.flatMapProductToFulfillmentItem(
-          products,
+          aggreation,
           item.product_id!,
           item.variant_id,
           item.quantity,
@@ -711,163 +845,13 @@ export class OrderingService
       ) ?? [];
     }
     else if (!main) {
-      throw this.createStatusCode(
+      throw createStatusCode(
         product_id,
         'Product',
         this.status_codes.ITEM_NOT_FOUND,
       );
     }
   };
-
-  private async getProductMap(
-    orders: Order[],
-    subject?: Subject,
-    context?: any,
-  ): Promise<ProductMap> {
-    const product_ids = [...new Set<string>(orders?.flatMap(
-      (o) => o?.items?.map(
-        (item) => item.product_id!
-      ) ?? []
-    ).filter(
-      (id) => id
-    )).values()];
-
-    if (!product_ids.length) {
-      throw this.createOperationStatusCode(
-        this.operation_status_codes.NO_ITEM,
-        'products',
-      );
-    }
-    else if (product_ids.length > 1000) {
-      throw this.createOperationStatusCode(
-        this.operation_status_codes.LIMIT_EXHAUSTED,
-        'products',
-      );
-    }
-
-    const product_id_json = JSON.stringify(product_ids);
-    const products = await this.product_service.read(
-      {
-        filters: [
-          {
-            filters: [{
-              field: 'id',
-              operation: Filter_Operation.in,
-              value: product_id_json,
-              type: Filter_ValueType.ARRAY,
-            }],
-          },
-        ],
-        limit: product_ids.length,
-        subject,
-      },
-      context,
-    ).then(
-      (response) => {
-        if (response.operation_status?.code !== 200) {
-          throw response.operation_status;
-        }
-        else if (response.items?.length < product_ids.length) {
-          const found = response.items?.map(item => item.payload?.id);
-          const missing = product_ids.filter(
-            id => !found.includes(id)
-          );
-          throw this.createOperationStatusCode(
-            this.operation_status_codes.ITEM_NOT_FOUND,
-            'products',
-            JSON.stringify(missing)
-          );
-        }
-        else {
-          return toObjectMap(response.items);
-        }
-      }
-    );
-
-    if (products) {
-      await this.mapBundles(products);
-    }
-    return products;
-  }
-
-  private getRatioedTaxMap(
-    products: ProductMap,
-    subject?: Subject,
-    context?: any
-  ): Promise<RatioedTaxMap> {
-    const getTaxIdsRecursive = (
-      product: ProductResponse
-    ): string[] => {
-      return [
-        ...product.payload!.product?.tax_ids ?? [],
-        ...product.payload!.product?.physical?.variants?.flatMap(
-          variant => variant.tax_ids ?? []
-        ) ?? [],
-        ...product.payload!.product?.virtual?.variants?.flatMap(
-          variant => variant.tax_ids ?? []
-        ) ?? [],
-        ...product.payload!.bundle?.products?.flatMap(
-          (p) => getTaxIdsRecursive(products[p.product_id!]!)
-        ) ?? []
-      ];
-    };
-
-    const tax_ids = [
-      ...new Set<string>(
-        Object.values(
-          products
-        ).flatMap(
-          (product) => getTaxIdsRecursive(product)
-        ).filter(
-          (id) => !!id
-        )
-      ).values()
-    ];
-
-    return this.tax_service.read(
-      {
-        filters: [{
-          filters: [
-            {
-              field: 'id',
-              operation: Filter_Operation.in,
-              value: JSON.stringify(tax_ids),
-              type: Filter_ValueType.ARRAY,
-            }
-          ]
-        }],
-        limit: tax_ids.length,
-        subject,
-      },
-      context
-    ).then(
-      response => {
-        if (response.operation_status?.code !== 200) {
-          throw response.operation_status;
-        }
-        else if (response.items?.length < tax_ids.length) {
-          const found = response.items?.map(item => item.payload?.id);
-          const missing = tax_ids.filter(
-            id => !found.includes(id)
-          );
-          throw this.createOperationStatusCode(
-            this.operation_status_codes.ITEM_NOT_FOUND,
-            'taxes',
-            JSON.stringify(missing)
-          );
-        }
-        else {
-          return response.items!.reduce(
-            (a, b) => {
-              a[b.payload.id] = b.payload;
-              return a;
-            },
-            {} as RatioedTaxMap
-          ) ?? {};
-        }
-      }
-    );
-  }
 
   private async getFulfillmentMap(
     order_ids: (string | undefined)[] | undefined,
@@ -878,7 +862,7 @@ export class OrderingService
     order_ids = [...new Set<string | undefined>(order_ids ?? [])];
 
     if (order_ids.length > 1000) {
-      throw this.createOperationStatusCode(
+      throw createOperationStatusCode(
         this.operation_status_codes.LIMIT_EXHAUSTED,
         'fulfillment',
       );
@@ -917,107 +901,6 @@ export class OrderingService
     );
   }
 
-  private async get<T>(
-    ids: string[],
-    service: CRUDClient,
-    entity: string,
-    subject?: Subject,
-    context?: any,
-  ): Promise<T> {
-    ids = [...new Set<string>(ids?.filter(
-      id => id
-    ))];
-
-    if (ids?.length > 1000) {
-      throw this.createOperationStatusCode(
-        this.operation_status_codes.LIMIT_EXHAUSTED,
-        entity,
-      );
-    }
-
-    if (!(ids?.length !== 0)) {
-      return {} as T;
-    }
-
-    return await service.read(
-      {
-        filters: [{
-          filters: [
-            {
-              field: '_key',
-              operation: Filter_Operation.in,
-              value: JSON.stringify(ids),
-              type: Filter_ValueType.ARRAY,
-            }
-          ]
-        }],
-        limit: ids.length,
-        subject,
-      },
-      context,
-    ).then(
-      (response: any) => {
-        if (response.operation_status?.code !== 200) {
-          throw response.operation_status;
-        }
-        else if (!response.items?.length || response.items?.length < ids.length) {
-          const found = response.items?.map((item: any) => item.payload?.id);
-          const missing = ids.filter(
-            id => !found?.includes(id)
-          );
-          throw this.createOperationStatusCode(
-            this.operation_status_codes.ITEM_NOT_FOUND,
-            entity,
-            JSON.stringify(missing),
-          );
-        }
-        else {
-          return response.items?.reduce(
-            (a: any, b: any) => {
-              a[b.payload?.id] = b;
-              return a;
-            }, {} as T
-          );
-        }
-      }
-    );
-  }
-
-  private async getById<T>(
-    id: string | undefined,
-    map: { [id: string]: T },
-    request_id?: string,
-    entity_name?: string,
-  ): Promise<T> {
-    if (id && id in map) {
-      return map[id];
-    }
-    else {
-      throw this.createStatusCode(
-        request_id ?? 'undefined',
-        entity_name ?? 'undefined',
-        this.status_codes.ITEM_NOT_FOUND,
-        id ?? 'undefined',
-      );
-    }
-  }
-
-  private async getByIds<T>(
-    ids: (string | undefined)[] | undefined,
-    map: { [id: string]: T },
-    request_id?: string,
-    entity_name?: string,
-  ): Promise<T[]> {
-    return Promise.all(ids?.map(
-      id => this.getById(
-        id,
-        map,
-        request_id,
-        entity_name,
-      )
-    ) ?? []);
-  }
-
   private resolveSettings(
     ...settings: Setting[]
   ): ResolvedSetting {
@@ -1044,172 +927,39 @@ export class OrderingService
   }
 
   private async aggregateSettings(
-    order_list: OrderList,
-    subject?: Subject,
-    context?: any,
-    shop_map?: ShopMap,
+    aggregation: AggregatedOrderListResponse,
   ): Promise<ResolvedSettingMap> {
-    shop_map ??= await this.get<ShopMap>(
-      order_list.items?.map(item => item.shop_id) ?? [],
-      this.shop_service,
-      'shops',
-      subject,
-      context,
-    );
-    const setting_map = await this.get<SettingMap>(
-      Object.values(shop_map)?.map(item => item.payload?.setting_id) ?? [],
-      this.setting_service,
-      'settings',
-      subject,
-      context,
-    );
-
     const resolved_settings: ResolvedSettingMap = new Map(
-      Object.entries(setting_map).map(([key, value]) => [
-        key,
-        this.resolveSettings(value.payload)
-      ])
+      aggregation.items.map(
+        (item) => {
+          const shop = aggregation.shops.get(item.payload.shop_id);
+          const customer = aggregation.customers.get(item.payload.customer_id);
+          const settings = [
+            aggregation.settings.get(shop.setting_id),
+            aggregation.settings.get(customer.setting_id)
+          ];
+          return [item.payload.id, this.resolveSettings(
+            ...settings
+          )];
+        }
+      )
     );
-
     return resolved_settings;
   }
 
-  private async aggregateOrders(
-    order_list: OrderList,
+  protected async aggregateOrderListResponse(
+    aggregation: AggregatedOrderListResponse,
     subject?: Subject,
     context?: any,
-    shop_map?: ShopMap,
-    customer_map?: CustomerMap,
   ): Promise<OrderListResponse> {
-    if (!order_list?.items?.length) {
+    if (!aggregation?.items?.length) {
       return {
-        operation_status: this.createOperationStatusCode(
+        operation_status: createOperationStatusCode(
           this.operation_status_codes.NO_ITEM,
           'order',
         )
       };
     }
-
-    const product_map = await this.getProductMap(
-      order_list.items,
-      subject,
-      context
-    );
-    const tax_map = await this.getRatioedTaxMap(
-      product_map,
-      subject,
-      context
-    );
-    const currency_map = await this.get<CurrencyMap>(
-      Object.values(
-        product_map ?? {}
-      ).flatMap(
-        product => (
-          product.payload?.bundle?.price?.currency_id
-          ?? (
-            product.payload?.product?.physical?.variants
-            ?? product.payload?.product?.virtual?.variants
-            ?? product.payload?.product?.service?.variants
-          )?.map(
-            variant => variant?.price?.currency_id
-          )
-        ),
-      ),
-      this.currency_service,
-      'currencies',
-      subject,
-      context,
-    );
-    customer_map = await this.get<CustomerMap>(
-      order_list.items?.map(item => item.customer_id) ?? [],
-      this.customer_service,
-      'customers',
-      subject,
-      context,
-    );
-    shop_map ??= await this.get<ShopMap>(
-      order_list.items?.map(item => item.shop_id) ?? [],
-      this.shop_service,
-      'shops',
-      subject,
-      context,
-    );
-    const organization_map = await this.get<OrganizationMap>(
-      [
-        ...Object.values(
-          shop_map ?? {}
-        ).map(
-          item => item.payload?.organization_id
-        ),
-        ...Object.values(
-          customer_map ?? {}
-        ).map(
-          item => item.payload?.commercial?.organization_id
-            ?? item.payload?.public_sector?.organization_id
-        )
-      ],
-      this.organization_service,
-      'organizations',
-      subject,
-      context,
-    );
-    const contact_point_map = await this.get<ContactPointMap>(
-      [
-        ...Object.values(
-          organization_map ?? {}
-        ).flatMap(
-          item => item.payload?.contact_point_ids
-        ),
-        ...Object.values(
-          customer_map ?? {}
-        ).flatMap(
-          item => item.payload?.private?.contact_point_ids
-        ),
-      ],
-      this.contact_point_service,
-      'contact_points',
-      subject,
-      context,
-    );
-    const address_map = await this.get<AddressMap>(
-      Object.values(
-        contact_point_map ?? {}
-      ).map(
-        item => item.payload?.physical_address_id
-      ),
-      this.address_service,
-      'addresses',
-      subject,
-      context,
-    );
-    const country_map = await this.get<CountryMap>(
-      [
-        ...Object.values(
-          tax_map ?? {}
-        ).map(
-          t => t.country_id
-        ),
-        ...Object.values(
-          address_map ?? {}
-        ).map(
-          item => item.payload?.country_id
-        ),
-        ...(
-          order_list.items?.map(
-            order => order.billing_address?.address?.country_id
-          ) ?? []
-        ),
-        ...(
-          order_list.items?.map(
-            order => order.shipping_address?.address?.country_id
-          ) ?? []
-        ),
-      ],
-      this.country_service,
-      'countries',
-      subject,
-      context,
-    );
 
     const getTaxesRecursive = async (
       main: Product,
@@ -1219,167 +969,102 @@ export class OrderingService
         return await Promise.all(
           main?.bundle?.products?.flatMap(
             p => getTaxesRecursive(
-              product_map[p?.product_id]?.payload,
+              aggregation.products.get(p?.product_id),
               (p.price_ratio ?? 0) * price_ratio
             )
-          ) ?? []
+          ).filter(t => t) ?? []
         ).then(
           promise => promise.flatMap(p => p)
         );
       }
       else {
-        return await Promise.all([
-          ...main.product?.tax_ids?.map(
-            async (id) => ({
-              ...(await this.getById(id, tax_map, main.id, 'Tax')),
-              tax_ratio: price_ratio
-            } as RatioedTax)
-          ) ?? [],
-          ...main.product?.physical?.variants!.flatMap(
-            variant => variant.tax_ids?.map(
-              async (id) => ({
-                ...(await this.getById(id, tax_map, main.id, 'Tax')),
-                tax_ratio: price_ratio
-              } as RatioedTax)
-            ) ?? []
-          ) ?? [],
-          ...main.product?.virtual?.variants!.flatMap(
-            variant => variant.tax_ids?.map(
-              async (id) => ({
-                ...(await this.getById(id, tax_map, main.id, 'Tax')),
-                tax_ratio: price_ratio
-              } as RatioedTax)
-            ) ?? []
-          ) ?? [],
-        ]);
+        return aggregation.taxes.getMany(
+          [].concat(
+            main.product?.tax_ids,
+            main.product?.physical?.variants?.flatMap(
+              variant => variant.tax_ids
+            ),
+            main.product?.virtual?.variants?.flatMap(
+              variant => variant.tax_ids
+            ),
+            main.product?.service?.variants?.flatMap(
+              variant => variant.tax_ids
+            ),
+          ).filter(t => t)
+        );
       }
     };
 
-    const promises = order_list.items?.map(async (order) => {
+    const promises = aggregation.items?.map(async (order) => {
       try {
-        const customer = await this.getById(
-          order?.customer_id,
-          customer_map,
-          order.id,
-          'Customer',
+        const resolved = resolveOrder(
+          aggregation,
+          order.payload,
         );
-        const shop = await this.getById(
-          order?.shop_id,
-          shop_map,
-          order.id,
-          'Shop',
+        const customer = resolved.customer;
+        const shop = resolved.shop;
+        const shop_contact_point = resolved.shop.organization.contact_points.find(
+          (cp) => cp.contact_point_type_ids?.includes(
+            this.contact_point_type_ids.legal
+          )
         );
-        const country = await this.getById(
-          shop.payload?.organization_id,
-          organization_map,
-          order.id,
-          'Organization',
-        ).then(
-          orga => this.getByIds(
-            orga.payload!.contact_point_ids!,
-            contact_point_map,
-            order.id,
-            'ContactPoint',
-          )
-        ).then(
-          cps => cps.find(
-            cp => cp.payload?.contact_point_type_ids?.includes(
-              this.contact_point_type_ids.legal
-            )
-          )
-        ).then(
-          cp => {
-            if (!cp) {
-              throw this.createStatusCode(
-                order.id,
-                'Shop',
-                this.status_codes.NO_LEGAL_ADDRESS,
-                order.shop_id,
-              );
-            }
-            else {
-              return this.getById(
-                cp.payload?.physical_address_id,
-                address_map,
-                order.id,
-                'Address',
-              );
-            }
-          }
-        ).then(
-          address => this.getById(
-            address.payload?.country_id,
-            country_map,
-            order.id,
-            'Country',
-          )
-        ).then(
-          country => country.payload
-        );
-        const organization = organization_map[
-          customer?.payload?.commercial?.organization_id
-          ?? customer?.payload?.public_sector?.organization_id
-        ];
 
-        if (customer?.payload?.private) {
-          order.customer_type ??= CustomerType.PRIVATE;
-          order.user_id ??= customer.payload?.private?.user_id;
-        }
-        else if (customer?.payload?.commercial) {
-          order.customer_type ??= CustomerType.COMMERCIAL;
-          order.customer_vat_id ??= organization?.payload?.vat_id;
-        }
-        else if (customer?.payload?.public_sector) {
-          order.customer_type ??= CustomerType.PUBLIC_SECTOR;
-          order.customer_vat_id ??= organization?.payload?.vat_id;
-        }
-        order.user_id = subject.id;
+        if (!shop_contact_point) {
+          throw createStatusCode(
+            order.payload.id,
+            'Shop',
+            this.status_codes.NO_LEGAL_ADDRESS,
+            order.payload.shop_id,
+          )
+        };
 
-        if (order.items?.length) {
-          await Promise.all(order.items?.map(
+        const shop_address = aggregation.addresses.get(shop_contact_point.physical_address_id);
+        const shop_country = aggregation.countries.get(shop_address.country_id);
+        const billing_country = resolved.billing_address.address.country;
+
+        if (customer?.private) {
+          order.payload.customer_type ??= CustomerType.PRIVATE;
+          order.payload.user_id ??= customer?.private?.user_id;
+        }
+        else if (customer?.commercial) {
+          order.payload.customer_type ??= CustomerType.COMMERCIAL;
+          order.payload.customer_vat_id ??= customer.commercial.organization.vat_id;
+        }
+        else if (customer?.public_sector) {
+          order.payload.customer_type ??= CustomerType.PUBLIC_SECTOR;
+          order.payload.customer_vat_id ??= customer.public_sector.organization.vat_id;
+        }
+        order.payload.user_id ??= subject?.id;
+
+        if (order.payload.items?.length) {
+          await Promise.all(resolved.items?.map(
             async (item) => {
-              if (!order.shipping_address) {
-                throw this.createStatusCode(
-                  order.id,
+              if (!order.payload.shipping_address) {
+                throwStatusCode(
+                  order?.payload.id,
                   'Order',
                   this.status_codes.NO_SHIPPING_ADDRESS,
-                  order?.id,
+                  order?.payload.id,
                 );
               }
 
-              const product = await this.getById(
-                item.product_id,
-                product_map,
-                order.id,
-                'Product',
-              );
-              const billing_country = await this.getById(
-                order.billing_address?.address?.country_id,
-                country_map,
-                order.id,
-                'Country',
-              );
-              const nature = product.payload!.product?.physical ?? product.payload!.product?.virtual;
+              const product = item.product;
+              const nature = product.product?.physical ?? product.product?.virtual;
               const variant = this.mergeProductVariantRecursive(nature, item.variant_id);
-              const currency = await this.getById(
-                variant.price?.currency_id,
-                currency_map,
-                order.id,
-                'Currency',
-              );
-              const precision = currency?.payload?.precision ?? 2;
-              const taxes = await getTaxesRecursive(product.payload!);
-              const unit_price = product.payload!.bundle ? product.payload!.bundle?.price : variant?.price;
+              const currency = aggregation.currencies.get(variant.price?.currency_id);
+              const precision = currency?.precision ?? 2;
+              const taxes = await getTaxesRecursive(product);
+              const unit_price = product.bundle ? product.bundle?.price : variant?.price;
               const gross = new BigNumber(
                 unit_price?.sale ? unit_price?.sale_price ?? 0 : unit_price?.regular_price ?? 0
               ).multipliedBy(item.quantity ?? 0);
               const vats = taxes.filter(
                 t => (
-                  t.country_id === country?.id &&
-                  country?.economic_areas?.some(
-                    ea => billing_country?.payload?.economic_areas?.includes(ea)
+                  t.country_id === shop_country?.id &&
+                  shop_country?.economic_areas?.some(
+                    ea => billing_country?.economic_areas?.includes(ea)
                   ) && (
-                    product.payload.product.tax_ids?.includes(t.id!)
+                    product.product.tax_ids?.includes(t.id!)
                     || variant.tax_ids?.includes(t.id!)
                   )
                 )
@@ -1407,15 +1092,15 @@ export class OrderingService
           ) ?? []);
         }
         else {
-          throw this.createStatusCode(
-            order?.id,
+          throw createStatusCode(
+            order?.payload.id,
             'Order',
             this.status_codes.NO_ITEM,
-            order?.id,
+            order?.payload.id,
           );
         }
 
-        order.total_amounts = Object.values(order.items?.reduce(
+        order.payload.total_amounts = Object.values(order.payload.items?.reduce(
           (amounts, item) => {
             const amount = amounts[item.amount?.currency_id];
             if (amount) {
@@ -1443,7 +1128,7 @@ export class OrderingService
           })
         );
 
-        order.total_amounts.forEach(
+        order.payload.total_amounts.forEach(
           amount => {
             amount.vats = Object.values(
               amount.vats?.reduce(
@@ -1470,27 +1155,27 @@ export class OrderingService
           }
         );
 
-        const has_shop_as_owner = order.meta?.owners?.filter(
+        const has_shop_as_owner = order.payload.meta?.owners?.filter(
           owner => owner.id === this.urns.ownerIndicatoryEntity
             && owner.value === this.urns.organization
         ).some(
           owner => owner.attributes?.some(
             a => a.id === this.urns.ownerInstance
-              && a.value === shop.payload.organization_id
+              && a.value === shop.organization_id
           )
         );
 
         const customer_entity = (
-          customer.payload?.private
+          customer?.private
             ? this.urns.user
             : this.urns.organization
         );
         const customer_instance = (
-          customer.payload?.private?.user_id
-            ?? customer.payload?.commercial?.organization_id
-            ?? customer.payload?.public_sector?.organization_id
+          customer?.private?.user_id
+            ?? customer?.commercial?.organization_id
+            ?? customer?.public_sector?.organization_id
         );
-        const has_customer_as_owner = order.meta?.owners?.filter(
+        const has_customer_as_owner = order.payload.meta?.owners?.filter(
           owner => owner.id === this.urns.ownerIndicatoryEntity
             && owner.value === customer_entity
         ).some(
@@ -1501,14 +1186,14 @@ export class OrderingService
         );
 
         if (!has_shop_as_owner ) {
-          order.meta.owners.push(
+          order.payload.meta.owners.push(
             {
               id: this.urns.ownerIndicatoryEntity,
               value: this.urns.organization,
               attributes: [
                 {
                   id: this.urns.ownerInstance,
-                  value: shop.payload.organization_id
+                  value: shop.organization_id
                 }
               ]
             }
@@ -1516,7 +1201,7 @@ export class OrderingService
         }
 
         if (!has_customer_as_owner ) {
-          order.meta.owners.push(
+          order.payload.meta.owners.push(
             {
               id: this.urns.ownerIndicatoryEntity,
               value: customer_entity,
@@ -1530,35 +1215,26 @@ export class OrderingService
           );
         };
 
-        return {
-          payload: order,
-          status: this.createStatusCode(
-            order?.id,
-            'Order',
-            this.status_codes.OK,
-            order?.id,
-          ),
-        } as OrderResponse;
+        order.status = createStatusCode(
+          order?.payload.id,
+          'Order',
+          this.status_codes.OK,
+          order?.payload.id,
+        );
+        return order;
       }
       catch (e: any) {
-        return {
-          payload: order,
-          status: {
-            id: order?.id,
-            code: e?.code ?? 500,
-            message: e?.message ?? e?.details ?? (e ? JSON.stringify(e) : 'Unknown Error!')
-          }
-        } as OrderResponse;
+        return this.catchStatusError(e, order);
       }
-    }) as OrderResponse[];
+    });
 
     const items = await Promise.all(promises);
     const operation_status = items.some(
       a => a.status?.code !== 200
-    ) ? this.createOperationStatusCode(
+    ) ? createOperationStatusCode(
         this.operation_status_codes.PARTIAL,
         'order',
-      ) : this.createOperationStatusCode(
+      ) : createOperationStatusCode(
         this.operation_status_codes.SUCCESS,
         'order',
       );
@@ -1568,6 +1244,37 @@ export class OrderingService
       total_count: items.length ?? 0,
       operation_status,
     };
+  }
+
+  protected async loadDefaultTemplates(
+    subject?: Subject,
+    context?: any
+  ) {
+    if(this.default_templates.length) {
+      return this.default_templates;
+    }
+
+    this.default_templates.push(...(this.cfg.get('default:Templates') ?? []));
+    const ids = this.default_templates.map(t => t.id);
+    if (ids.length) {
+      await this.aggregator.getByIds(
+        ids,
+        TemplateServiceDefinition,
+        this.tech_user ?? subject,
+        context,
+      ).then(
+        resp_map => {
+          this.default_templates.forEach(
+            template => Object.assign(
+              template,
+              resp_map.get(template.id, null) // null for ignore missing
+            )
+          )
+        }
+      );
+    }
+
+    return this.default_templates;
   }
 
   public async updateState(
@@ -1592,7 +1299,7 @@ export class OrderingService
         }
       );
 
-      const response = await super.update(
+      const response = await this.insecUpdate(
         {
           items,
           total_count: items.length,
@@ -1606,10 +1313,10 @@ export class OrderingService
           (item: OrderResponse) => {
             responseMap[item.payload?.id ?? item.status?.id] = item;
             if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
-              this.topic.emit(this.emitters['INVALID'], item);
+              this.orderingTopic.emit(this.emitters['INVALID'], item);
             }
             else if (item?.payload?.order_state in this.emitters) {
-              this.topic.emit(this.emitters[item.payload?.order_state], item.payload);
+              this.orderingTopic.emit(this.emitters[item.payload?.order_state], item.payload);
             }
           }
         );
@@ -1629,33 +1336,7 @@ export class OrderingService
     }
   }
 
-  @resolves_subject()
-  @access_controlled_function({
-    action: AuthZAction.READ,
-    operation: Operation.whatIsAllowed,
-    context: DefaultACSClientContextFactory,
-    resource: [{ resource: 'order' }],
-    database: 'arangoDB',
-    useCache: true,
-  })
-  public override read(
-    request: ReadRequest,
-    context?: any
-  ) {
-    return super.read(request, context);
-  }
-
-  @resolves_subject()
-  @injects_meta_data()
-  @access_controlled_function({
-    action: AuthZAction.CREATE,
-    operation: Operation.isAllowed,
-    context: OrderingService?.ACSContextFactory,
-    resource: DefaultResourceFactory('order'),
-    database: 'arangoDB',
-    useCache: true,
-  })
-  public override create(
+  public override insecCreate(
     request: OrderList,
     context?: any
   ) {
@@ -1666,41 +1347,7 @@ export class OrderingService
         }
       }
     );
-    return super.create(request, context);
-  }
-
-  @resolves_subject()
-  @injects_meta_data()
-  @access_controlled_function({
-    action: AuthZAction.MODIFY,
-    operation: Operation.isAllowed,
-    context: OrderingService?.ACSContextFactory,
-    resource: DefaultResourceFactory('order'),
-    database: 'arangoDB',
-    useCache: true,
-  })
-  public override update(
-    request: OrderList,
-    context?: any
-  ) {
-    return super.update(request, context);
-  }
-
-  @resolves_subject()
-  @injects_meta_data()
-  @access_controlled_function({
-    action: AuthZAction.MODIFY,
-    operation: Operation.isAllowed,
-    context: OrderingService?.ACSContextFactory,
-    resource: DefaultResourceFactory('order'),
-    database: 'arangoDB',
-    useCache: true,
-  })
-  public override upsert(
-    request: OrderList,
-    context?: any
-  ) {
-    return super.upsert(request, context);
+    return super.insecCreate(request, context);
   }
 
   @resolves_subject()
@@ -1718,8 +1365,17 @@ export class OrderingService
     context?: any
   ): Promise<OrderListResponse> {
     try {
-      const orders = await this.aggregateOrders(
-        request,
+      const aggregation = await this.aggregate(
+        {
+          items: request.items.map(
+            payload => ({ payload })
+          )
+        },
+        request.subject,
+        context,
+      );
+      const orders = await this.aggregateOrderListResponse(
+        aggregation,
         request.subject,
         context
       );
@@ -1745,7 +1401,7 @@ export class OrderingService
     context?: any
   ): Promise<OrderSubmitListResponse> {
     try {
-      await super.read(
+      await this.insecRead(
         {
           filters: [
             {
@@ -1772,7 +1428,7 @@ export class OrderingService
       ).then(
         response => {
           if (response.items?.length) {
-            throw this.createOperationStatusCode(
+            throw createOperationStatusCode(
               this.operation_status_codes.CONFLICT,
               'order',
             );
@@ -1780,50 +1436,30 @@ export class OrderingService
         }
       );
 
-      const response_map = request.items?.reduce(
-        (a, b) => {
-          a[b.id] = {};
-          return a;
+      const response_map: OrderMap = {};
+      const aggregation = await this.aggregate(
+        {
+          items: request.items.map(item => ({
+            payload: item,
+          })),
         },
-        {} as Record<string, OrderResponse> 
-      ) ?? {};
-
-      const shop_map = await this.get<ShopMap>(
-        request.items?.map(item => item.shop_id) ?? [],
-        this.shop_service,
-        'shops',
-        request.subject,
-        context,
-      );
-
-      const customer_map = await this.get<CustomerMap>(
-        request.items?.map(item => item.customer_id) ?? [],
-        this.customer_service,
-        'customers',
         request.subject,
         context,
       );
 
       const settings = await this.aggregateSettings(
-        request,
-        request.subject,
-        context,
-        shop_map,
+        aggregation
       );
 
-      const response: OrderSubmitListResponse  = await this.aggregateOrders(
-        request,
+      const response: OrderSubmitListResponse  = await this.aggregateOrderListResponse(
+        aggregation,
         request.subject,
         context,
-        shop_map,
-        customer_map,
       ).then(
         response => ({
-          orders: response.items?.map(
+          orders: response.items.map(
             item => {
-              if (item.status?.id in response_map) {
-                response_map[item.status?.id] = item;
-              }
+              response_map[item.payload?.id ?? item.status?.id] = item;
               item.payload.order_state = OrderState.PENDING;
               return item;
             }
@@ -1844,17 +1480,17 @@ export class OrderingService
             {
               items: response.orders?.filter(
                 item => {
-                  const setting = settings.get(item.payload?.id) ?? this.default_setting;
+                  const setting = settings.get(item.payload?.id);
                   return item.status?.code === 200
                     && setting.shop_fulfillment_evaluate_enabled;
                 }
               ).map(item => ({
                 order_id: item.payload.id,
               })),
-              subject: this.fulfillment_tech_user ?? request.subject,
+              subject: this.tech_user ?? request.subject,
             },
             context,
-            toObjectMap(response.orders),
+            response_map,
           ).then(
             r => {
               r.items?.forEach(
@@ -1889,14 +1525,14 @@ export class OrderingService
             {
               items: response.orders?.filter(
                 item => {
-                  const setting = settings.get(item.payload?.id) ?? this.default_setting;
+                  const setting = settings.get(item.payload?.id);
                   return item.status?.code === 200
                     && setting.shop_fulfillment_create_enabled;
                 }
               ).map(item => ({
                 order_id: item.payload.id,
               })),
-              subject: this.fulfillment_tech_user ?? request.subject,
+              subject: this.tech_user ?? request.subject,
             },
             context,
             toObjectMap(response.orders),
@@ -1930,9 +1566,47 @@ export class OrderingService
           );
         }
 
-        if (response.operation_status?.code !== 200) {
-          this.logger.error('On Submit', response);
-          return response;
+        if (this.notification_service) {
+          this.logger?.debug('Send notifications on submit...');
+          const default_templates = await this.loadDefaultTemplates().then(
+            df => df.filter(
+              template => template.use_case?.toString() === 'ORDER_CONFIRMATION' // TemplateUseCase.ORDER_CONFIRMATION
+            )
+          );
+          await Promise.all(aggregation.items.filter(
+            item => {
+              const setting = settings.get(item.payload.id);
+              return setting?.shop_order_send_confirm_enabled;
+            }
+          ).map(
+            async (item, i) => {
+              const render_id = `order/confirm/${item.payload.id}`;
+              return await this.emitRenderRequest(
+                item.payload,
+                aggregation,
+                render_id,
+                'ORDER_CONFIRMATION', // TemplateUseCase.ORDER_CONFIRMATION,
+                default_templates,
+                request.subject,
+              ).then(
+                () => this.awaits_render_result.await(render_id, this.kafka_timeout)
+              ).then(
+                async (bodies) => {
+                  const setting = settings.get(item.payload.id);
+                  const title = bodies.shift();
+                  const body = bodies.join('');
+    
+                  return this.sendNotification(
+                    item.payload,
+                    body,
+                    setting,
+                    title,
+                    context,
+                  );
+                }
+              )
+            }
+          ));
         }
 
         if (this.invoice_service) {
@@ -1941,7 +1615,7 @@ export class OrderingService
             {
               items: response.orders?.filter(
                 item => {
-                  const setting = settings.get(item.payload?.id) ?? this.default_setting;
+                  const setting = settings.get(item.payload?.id);
                   return item.status?.code === 200
                     && setting.shop_invoice_create_enabled
                     && !setting.shop_invoice_render_enabled
@@ -1957,7 +1631,7 @@ export class OrderingService
                   ]
                 })
               ),
-              subject: this.invoice_tech_user ?? request.subject,
+              subject: this.tech_user ?? request.subject,
             },
             context,
             toObjectMap(response.orders),
@@ -2002,7 +1676,7 @@ export class OrderingService
             {
               items: response.orders?.filter(
                 item => {
-                  const setting = settings.get(item.payload?.id) ?? this.default_setting;
+                  const setting = settings.get(item.payload?.id);
                   return item.status?.code === 200
                     && (
                       setting.shop_invoice_render_enabled
@@ -2019,7 +1693,7 @@ export class OrderingService
                   ]
                 })
               ),
-              subject: this.invoice_tech_user ?? request.subject,
+              subject: this.tech_user ?? request.subject,
             },
             context,
             toObjectMap(response.orders),
@@ -2067,7 +1741,7 @@ export class OrderingService
           this.logger?.debug('Send invoices on submit...');
           const invoices = response.invoices?.filter(
             item => {
-              const setting = settings.get(item.payload?.id) ?? this.default_setting;
+              const setting = settings.get(item.payload?.references?.[0]?.instance_id);
               return item.status?.code === 200
                 && item.payload?.references?.[0]?.instance_id
                 && setting?.shop_invoice_send_enabled;
@@ -2082,7 +1756,7 @@ export class OrderingService
             await this.invoice_service.send(
               {
                 items: invoices,
-                subject: this.invoice_tech_user ?? request.subject,
+                subject: this.tech_user ?? request.subject,
               },
               context,
             ).then(
@@ -2125,7 +1799,7 @@ export class OrderingService
             }
           );
   
-          await super.upsert(
+          await this.insecUpsert(
             OrderList.fromPartial({
               items: submits,
               total_count: submits.length,
@@ -2150,10 +1824,10 @@ export class OrderingService
         Object.values(response_map).forEach(
           item => {
             if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
-              this.topic.emit(this.emitters['INVALID'], item);
+              this.orderingTopic.emit(this.emitters['INVALID'], item);
             }
             else if (item.payload?.order_state in this.emitters) {
-              this.topic.emit(this.emitters[item.payload.order_state], item.payload);
+              this.orderingTopic.emit(this.emitters[item.payload.order_state], item.payload);
             }
           }
         );
@@ -2178,7 +1852,7 @@ export class OrderingService
                 fulfillment => fulfillment.payload?.references?.some(
                   reference => failed_ids.includes(reference?.instance_id)
                 )
-              ) 
+              ) ?? []
               : response.fulfillments
           ).map(
             fulfillment => fulfillment.payload?.id ?? fulfillment.status?.id 
@@ -2188,7 +1862,7 @@ export class OrderingService
             await this.fulfillment_service?.delete(
               {
                 ids,
-                subject: this.fulfillment_tech_user,
+                subject: this.tech_user,
               },
               context,
             ).then(
@@ -2284,7 +1958,7 @@ export class OrderingService
     request: FulfillmentRequestList,
     context?: any,
     orders?: OrderMap,
-    products?: ProductMap,
+    aggregation?: AggregatedOrderListResponse,
   ): Promise<FulfillmentSolutionListResponse> {
     if (!request.items?.length) {
       return {
@@ -2303,28 +1977,30 @@ export class OrderingService
         };
         return a;
       },
-      {} as { [key: string]: FulfillmentSolutionResponse }
+      {} as Record<string, FulfillmentSolutionResponse>
     ) ?? {};
 
     orders ??= await this.getOrderMap(
       request.items?.map(item => item.order_id),
       request.subject,
       context
-    ) ?? {};
+    );
 
-    products ??= await this.getProductMap(
-      Object.values(orders).map(item => item.payload),
-      request.subject,
-      context,
-    ) ?? {};
+    aggregation ??= await this.aggregate(
+      {
+        items: Object.values(orders)
+      },
+      this.tech_user ?? request.subject,
+      context
+    );
 
     const items = request.items?.filter(
       item => {
         const response = response_map[item.order_id];
-        const order = orders?.[item.order_id];
+        const order = orders[item.order_id];
 
         if (!order) {
-          response.status = this.createStatusCode(
+          response.status = createStatusCode(
             item.order_id,
             this.entityName,
             this.status_codes.ITEM_NOT_FOUND,
@@ -2346,7 +2022,7 @@ export class OrderingService
         const order = orders?.[item.order_id];
         const items = order.payload?.items?.flatMap(
           item => this.flatMapProductToFulfillmentItem(
-            products,
+            aggregation,
             item.product_id,
             item.variant_id,
             item.quantity,
@@ -2354,7 +2030,7 @@ export class OrderingService
         );
 
         if (items?.length === 0) {
-          response.status = this.createStatusCode(
+          response.status = createStatusCode(
             item.order_id,
             this.entityName,
             this.status_codes.NO_PHYSICAL_ITEM,
@@ -2463,7 +2139,7 @@ export class OrderingService
       item => {
         const order = orders[item.order_id!];
         const solution = solutions?.[item.order_id!];
-        const status = solution?.status ?? this.createStatusCode(
+        const status = solution?.status ?? createStatusCode(
           item.order_id,
           'Order',
           this.status_codes.SOLUTION_NOT_FOUND,
@@ -2516,6 +2192,12 @@ export class OrderingService
         }
       }
 
+      orders ??= await this.getOrderMap(
+        request.items?.map(item => item.order_id),
+        request.subject,
+        context
+      ) ?? {};
+
       const prototypes = await this.toFulfillmentResponsePrototypes(
         request,
         context,
@@ -2543,7 +2225,7 @@ export class OrderingService
         {
           items: valids.map(item => item.payload),
           total_count: valids.length,
-          subject: this.fulfillment_tech_user ?? request.subject,
+          subject: this.tech_user ?? request.subject,
         },
         context
       ).then(
@@ -2573,7 +2255,7 @@ export class OrderingService
         ],
         total_count: valids.length + invalids.length,
         operation_status: invalids.length
-          ? this.createOperationStatusCode(
+          ? createOperationStatusCode(
             this.operation_status_codes.PARTIAL,
             'fulfillment',
           )
@@ -2598,6 +2280,12 @@ export class OrderingService
         }
       }
 
+      orders ??= await this.getOrderMap(
+        request.items?.map(item => item.order_id),
+        request.subject,
+        context
+      ) ?? {};
+
       const prototypes = await this.toFulfillmentResponsePrototypes(
         request,
         context,
@@ -2614,7 +2302,8 @@ export class OrderingService
         item => {
           item.payload.meta ??= {};
           if (!item.payload.meta.owners?.length) {
-            const order = orders[item.status.id];
+            const order_id = item.payload?.references?.[0]?.instance_id;
+            const order = orders[order_id];
             item.payload.meta.owners = order.payload?.meta?.owners;
           }
           return item;
@@ -2625,7 +2314,7 @@ export class OrderingService
         {
           items: valids.map(item => item.payload),
           total_count: valids.length,
-          subject: this.fulfillment_tech_user ?? request.subject,
+          subject: this.tech_user ?? request.subject,
         },
         context
       ).then(
@@ -2655,7 +2344,7 @@ export class OrderingService
         ],
         total_count: valids.length + invalids.length,
         operation_status: invalids.length
-          ? this.createOperationStatusCode(
+          ? createOperationStatusCode(
             this.operation_status_codes.PARTIAL,
             'fulfillment',
           )
@@ -2755,7 +2444,7 @@ export class OrderingService
       );
 
       this.logger.debug('Emit Fulfillment request', { fulfillmentList });
-      await this.topic.emit(this.emitters['CREATE_FULFILLMENT'] ?? CREATE_FULFILLMENT, fulfillmentList);
+      await this.orderingTopic.emit(this.emitters['CREATE_FULFILLMENT'] ?? CREATE_FULFILLMENT, fulfillmentList);
       this.logger.info('Fulfillment request emitted successfully', { fulfillmentList });
 
       return {
@@ -2799,7 +2488,7 @@ export class OrderingService
         const master = order_map[item.sections?.[0]?.order_id];
         if (master?.status?.code !== 200) {
           return {
-            status: master?.status ?? this.createStatusCode(
+            status: master?.status ?? createStatusCode(
               item.sections?.[0]?.order_id,
               this.entityName,
               this.status_codes.ITEM_NOT_FOUND,
@@ -2814,7 +2503,7 @@ export class OrderingService
           if (order?.status?.code !== 200) {
             return {
               payload: undefined,
-              status: order?.status ?? this.createStatusCode(
+              status: order?.status ?? createStatusCode(
                 section.order_id,
                 this.entityName,
                 this.status_codes.ITEM_NOT_FOUND,
@@ -2827,7 +2516,7 @@ export class OrderingService
             order.payload?.shop_id !== master?.payload?.shop_id
           ) {
             return {
-              status: this.createStatusCode(
+              status: createStatusCode(
                 section.order_id,
                 typeof(order.payload),
                 this.status_codes.IN_HOMOGEN_INVOICE,
@@ -2949,7 +2638,7 @@ export class OrderingService
               }
             )
           },
-          status: this.createStatusCode(
+          status: createStatusCode(
             master.payload?.id,
             'Invoice',
             this.status_codes.OK,
@@ -3001,7 +2690,7 @@ export class OrderingService
             v => v.payload
           ),
           total_count: valids.length,
-          subject: this.invoice_tech_user ?? request.subject,
+          subject: this.tech_user ?? request.subject,
         },
         context
       );
@@ -3013,7 +2702,7 @@ export class OrderingService
         ],
         total_count: valids.length + invalids.length,
         operation_status: (response.operation_status.code === 200 && invalids.length)
-          ? this.createOperationStatusCode(
+          ? createOperationStatusCode(
             this.operation_status_codes.PARTIAL,
             'Invoice',
           )
@@ -3126,7 +2815,7 @@ export class OrderingService
       );
 
       this.logger.debug('Emit Invoice Request', { invoiceList });
-      await this.topic.emit(this.emitters['CREATE_INVOICE'] ?? CREATE_INVOICE, invoiceList);
+      await this.orderingTopic.emit(this.emitters['CREATE_INVOICE'] ?? CREATE_INVOICE, invoiceList);
       this.logger.info('Fulfillment request emitted successfully', { invoiceList });
 
       return {
@@ -3138,4 +2827,238 @@ export class OrderingService
       return this.catchOperationError(e);
     }
   };
+
+  protected async fetchFile(url: string, subject?: Subject): Promise<string> {
+    if (url?.startsWith('file://')) {
+      return fs.readFileSync(url.slice(7)).toString();
+    }
+    else if (url?.startsWith('http')) {
+      return fetch(
+        url,
+        subject?.token ? {
+          headers: {
+            Authorization: `Bearer ${subject.token}`
+          }
+        } : undefined
+      ).then(resp => resp.text())
+    }
+    else {
+      throw createStatusCode(
+        undefined,
+        'Template',
+        this.status_codes.PROTOCOL_NOT_SUPPORTED,
+        undefined,
+        url,
+      );
+    }
+  }
+
+  protected async fetchLocalization(
+    template: Template,
+    locales: string[],
+    subject?: Subject,
+  ) {
+    const locale = locales?.find(
+      a => template.localization?.some(
+        b => b.local_codes?.includes(a)
+      )
+    ) ?? 'en';
+    const L = template.localization?.find(
+      a => a.local_codes?.includes(locale)
+    );
+    const url = L?.l10n?.url;
+    const l10n = url ? await this.fetchFile(url, subject).then(
+      text => {
+        if (L.l10n.content_type === 'application/json') {
+          return JSON.parse(text);
+        }
+        else if (L.l10n.content_type === 'text/csv') {
+          return CSV(text, {
+            columns: true,
+            skip_empty_lines: true,
+            objname: 'key',
+            escape: '\\',
+            trim: true,
+            delimiter: ',',
+            ignore_last_delimiters: true,
+          });
+        }
+        else {
+          throw createStatusCode(
+            template.id,
+            'Template',
+            this.status_codes.CONTENT_NOT_SUPPORTED,
+            template.id,
+            L.l10n.content_type,
+          );
+        }
+      }
+    ).then(
+      l10n => Object.assign(l10n, { _locale: locale })
+    ) : undefined;
+  
+    return l10n;
+  }
+
+  protected async emitRenderRequest(
+    item: Order,
+    aggregation: AggregatedOrderListResponse,
+    render_id: string,
+    use_case: TemplateUseCase | string,
+    default_templates?: Template[],
+    subject?: Subject,
+  ) {
+    const shop = aggregation.shops.get(item.shop_id);
+    const customer = aggregation.customers.get(item.customer_id);
+    const setting = this.resolveSettings(
+      aggregation.settings.get(
+        customer.setting_id
+      ),
+      aggregation.settings.get(
+        shop.setting_id
+      ),
+    );
+    const locales = [
+      ...(setting?.customer_locales ?? []),
+      ...(setting?.shop_locales ?? []),
+    ];
+    const templates = shop.template_ids?.map(
+      id => aggregation.templates?.get(id)
+    ).filter(
+      template => template.use_case === use_case
+    ).sort(
+      (a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0)
+    ) ?? [];
+
+    if (templates.length === 0 && default_templates.length > 0) {
+      templates.push(...default_templates);
+    }
+    else {
+      throw createOperationStatusCode(
+        this.operation_status_codes.NO_TEMPLATES
+      );
+    }
+
+    const bodies = await Promise.all(
+      templates.map(
+        template => template.body?.url ? this.fetchFile(
+          template.body.url, subject
+        ) : undefined
+      )
+    );
+    const layouts = await Promise.all(
+      templates.map(
+        template => template.layout?.url ? this.fetchFile(
+          template.layout.url, subject
+        ) : undefined
+      )
+    );
+    const l10n = await Promise.all(
+      templates.map(
+        template => this.fetchLocalization(
+          template, locales, subject
+        )
+      )
+    );
+
+    const payloads: Payload[] = templates.map(
+      (template, i) => ({
+        content_type: 'text/html',
+        data: packRenderData(
+          aggregation,
+          item,
+        ),
+        templates: marshallProtobufAny({
+          [i]: {
+            body: bodies[i],
+            layout: layouts[i],
+          },
+        }),
+        style_url: template.styles?.find(s => s.url).url,
+        options: l10n[i] ? marshallProtobufAny({
+          locale: l10n[i]._locale,
+          texts: l10n[i]
+        }) : undefined
+      })
+    );
+
+    return this.renderingTopic.emit(
+      'renderRequest',
+      {
+        id: render_id,
+        payloads,
+      } as RenderRequest
+    );
+  }
+
+  public async handleRenderResponse(
+    response: RenderResponse,
+    context?: any,
+  ) {
+    try {
+      const [entity] = response.id.split('/');
+      if (entity !== 'order') return;
+      const content = response.responses.map(
+        r => JSON.parse(r.value.toString())
+      );
+      const errors = content.filter(
+        c => c.error
+      ).map(
+        c => c.error
+      );
+
+      if (errors?.length) {
+        const status: Status = {
+          code: 500,
+          message: errors.join('\n'),
+        };
+
+        this.awaits_render_result.reject(response.id, status);
+      }
+      else {
+        const bodies = content.map(
+          (c, i) => c[i]
+        ) as string[];
+        this.awaits_render_result.resolve(response.id, bodies);
+      }
+    }
+    catch (e: any) {
+      this.logger?.error('Error on handleRenderResponse:', e);
+    }
+  }
+
+  protected async sendNotification(
+    order: Order,
+    body: string,
+    setting: ResolvedSetting,
+    title?: string,
+    context?: any,
+  ) {
+    const status = await this.notification_service.send(
+      {
+        transport: 'email',
+        provider: setting.shop_email_provider,
+        email: {
+          to: [order.billing_address.contact.email],
+          cc: [
+            ...(setting.customer_email_cc ?? []),
+            ...(setting.shop_email_cc ?? []),
+          ],
+          bcc: [
+            ...(setting.customer_email_bcc ?? []),
+            ...(setting.shop_email_bcc ?? []),
+          ],
+        },
+        subject: title ?? order.id,
+        body,
+      },
+      context
+    );
+
+    if (status?.operation_status?.code === 200) {
+      (order.order_state as any) = 'SENT';
+    }
+
+    return order;
+  }
 }

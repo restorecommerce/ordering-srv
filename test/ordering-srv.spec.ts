@@ -71,13 +71,6 @@ describe('The Ordering Service:', () => {
     ) as Client<OrderServiceDefinition>;
 
     await Promise.all([
-      client?.delete({
-        collection: true,
-        subject: {
-          id: 'superadmin',
-          token: 'superadmin',
-        }
-      }),
       topics?.on('orderCreated', onOrderCreated),
       topics?.on('orderModified', onOrderUpdated),
       topics?.on('orderSubmitted', onOrderSubmitted),
@@ -119,7 +112,7 @@ describe('The Ordering Service:', () => {
       );
       should.ok(
         !response.items?.some(item => item.status?.code !== 200),
-        'response.items[*].status.code expected all to be 200',
+        'response.items[*].status.code expected all to be 200\n' + JSON.stringify(response, null, 2),
       );
     });
 

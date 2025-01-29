@@ -2,7 +2,7 @@
   "logger": {
     "console": {
       "handleExceptions": false,
-      "level": "error",
+      "level": "warn",
       "colorize": true,
       "prettyPrint": true
     }
@@ -219,6 +219,19 @@
         "protoPath": "io/restorecommerce/currency.proto",
         "packageName": "io.restorecommerce.currency",
         "serviceName": "CurrencyService",
+        "protoLoadOptions": {
+          "includeDirs": [
+            "node_modules/@restorecommerce/protos/"
+          ]
+        }
+      }
+    },
+    "manufacturer": {
+      "address": "localhost:50179",
+      "mock": {
+        "protoPath": "io/restorecommerce/manufacturer.proto",
+        "packageName": "io.restorecommerce.manufacturer",
+        "serviceName": "ManufacturerService",
         "protoLoadOptions": {
           "includeDirs": [
             "node_modules/@restorecommerce/protos/"

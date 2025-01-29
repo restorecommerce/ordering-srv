@@ -87,9 +87,9 @@
         <td>{{increment i}}</td>
         <td>{{{name}}}</td>
         <td>{{quantity}}</td>
-        <td class="vclAlignRight">{{nfc fullPrice}} {{cs}}</td>
+        <td class="vclAlignRight">{{fullPrice}} {{cs}}</td>
         <td class="vclAlignRight">
-            {{nfc total}} {{cs}}
+            {{total}} {{cs}}
             {{#if freeTax}}
               *
             {{/if}}
@@ -99,13 +99,13 @@
     {{#if hasShipping}}
       <tr>
         <td colspan="3">{{t 'emails.orderConfirmation.shipping'}}</td>
-        <td colspan="2" class="vclAlignRight">{{nfc shipping}} {{cs}}</td>
+        <td colspan="2" class="vclAlignRight">{{shipping}} {{cs}}</td>
       </tr>
     {{/if}}
     {{#if hasPaymentFee}}
       <tr>
         <td colspan="3">{{t 'components.cart.paymentFees'}}</td>
-        <td colspan="2" class="vclAlignRight">{{nfc paymentFee}} {{cs}}</td>
+        <td colspan="2" class="vclAlignRight">{{paymentFee}} {{cs}}</td>
       </tr>
     {{/if}}
     <tr class="vclNoBorder">
@@ -115,7 +115,7 @@
       {{#each taxList}}
         <tr class="vclNoBorder">
           <td colspan="3">{{taxName}}</td>
-          <td colspan="2" class="vclAlignRight">{{nfc taxAmount}} {{cs}}</td>
+          <td colspan="2" class="vclAlignRight">{{taxAmount}} {{cs}}</td>
         </tr>
       {{/each}}
     {{/if}}
@@ -124,7 +124,7 @@
       {{#each voucherResources}}
         <tr class="vclNoBorder">
           <td colspan="3">{{t 'emails.orderConfirmation.voucher'}}: {{code}}</td>
-          <td colspan="2" class="vclAlignRight">({{nfc value}}) {{../cs}}</td>
+          <td colspan="2" class="vclAlignRight">({{value}}) {{../cs}}</td>
         </tr>
       {{/each}}
     {{/if}}
@@ -132,13 +132,13 @@
     {{#if discount}}
       <tr class="vclNoBorder">
         <td colspan="3">{{t 'emails.orderConfirmation.discount'}}</td>
-        <td colspan="2" class="vclAlignRight">{{nfc discount}} {{cs}}</td>
+        <td colspan="2" class="vclAlignRight">{{discount}} {{cs}}</td>
       </tr>
     {{/if}}
 
     <tr class="vclSumTableTotal">
       <td colspan="3">{{t 'emails.orderConfirmation.total'}}</td>
-      <td colspan="2" class="vclAlignRight">{{nfc total}} {{cs}}</td>
+      <td colspan="2" class="vclAlignRight">{{total}} {{cs}}</td>
     </tr>
   </tbody>
 </table>

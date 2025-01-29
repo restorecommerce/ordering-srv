@@ -9,15 +9,12 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order.js';
 import { 
   ProductListResponse,
-  ProductResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/product.js';
 import {
   OrganizationListResponse,
-  OrganizationResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/organization.js';
 import {
   ContactPointListResponse,
-  ContactPointResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/contact_point.js';
 import {
   AddressListResponse,
@@ -26,11 +23,9 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/address.js';
 import {
   CountryListResponse,
-  CountryResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/country.js';
 import {
   TaxListResponse,
-  TaxResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/tax.js';
 import {
   TaxTypeListResponse
@@ -39,13 +34,14 @@ import {
   FulfillmentSolutionListResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment_product.js';
 import {
-  UserListResponse,
   UserResponse,
   UserType
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/user.js';
 import {
+  UserListResponse,
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/user.js';
+import {
   ShopListResponse,
-  ShopResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/shop.js';
 import {
   CustomerListResponse
@@ -56,6 +52,7 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment.js';
 import {
   OperationStatus,
+  Status,
   StatusListResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/status.js';
 import {
@@ -72,12 +69,15 @@ import {
   HierarchicalScope
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth.js';
 import {
+  CurrencyListResponse
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/currency.js';
+import {
+  ManufacturerListResponse
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/manufacturer.js';
+import {
   getRedisInstance,
   logger
 } from './utils.js';
-import {
-  CurrencyListResponse, CurrencyResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/currency.js';
 
 type Address = ShippingAddress & BillingAddress;
 
@@ -117,6 +117,11 @@ const subjects: { [key: string]: Subject } = {
     token: 'admin',
   },
 };
+
+const status: Status = {
+  code: 200,
+  message: 'OK',
+}
 
 const operationStatus: OperationStatus = {
   code: 200,
@@ -158,56 +163,114 @@ const businessAddresses: Address[] = [{
   }
 }];
 
-const currencies: CurrencyResponse[] = [{
-  payload: {
-    id: 'euro',
-    countryIds: ['germany'],
-    name: 'Euro',
-    precision: 2,
-    symbol: '€',
-    meta: mainMeta,
-  },
-  status: {
-    id: 'euro',
-    code: 200,
-    message: 'OK',
-  }
-}];
+const addresses: AddressListResponse = {
+  items: [
+    ...residentialAddresses,
+    ...businessAddresses,
+  ].map(item => ({
+    payload: item.address,
+    status
+  })),
+  totalCount: residentialAddresses.length + businessAddresses.length,
+  operationStatus,
+}
 
-const countries: CountryResponse[] = [{
-  payload: {
-    id: 'germany',
-    countryCode: 'DE',
-    name: 'Deutschland',
-    geographicalName: 'Germany',
-    economicAreas: ['EU'],
-  },
-  status: {
-    id: 'germany',
-    code: 200,
-    message: 'OK',
-  }
-}];
+const customers: CustomerListResponse = {
+  items: [
+    {
+      payload: {
+        id: 'customer_1',
+        private: {
+          userId: 'user_1',
+          contactPointIds: [
+            'contactPoint_1'
+          ],
+        },
+      },
+      status: {
+        id: 'customer_1',
+        code: 200,
+        message: 'OK',
+      }
+    }
+  ],
+  totalCount: 1,
+  operationStatus
+};
 
-const taxes: TaxResponse[] = [
-  {
+const currencies: CurrencyListResponse = {
+  items: [{
+    payload: {
+      id: 'euro',
+      countryIds: ['germany'],
+      name: 'Euro',
+      precision: 2,
+      symbol: '€',
+      meta: mainMeta,
+    },
+    status,
+  }],
+  operationStatus,
+};
+
+const countries: CountryListResponse = {
+  items: [{
+    payload: {
+      id: 'germany',
+      countryCode: 'DE',
+      name: 'Deutschland',
+      geographicalName: 'Germany',
+      economicAreas: ['EU'],
+    },
+    status
+  }],
+  operationStatus,
+};
+
+const tax_types: TaxTypeListResponse = {
+  items: [
+    {
+      payload: {
+        id: 'taxType_1',
+        type: 'MwSt.',
+        description: 'Standard Mehrwert Steuer',
+      },
+      status: {
+        id: 'taxType_1',
+        code: 200,
+        message: 'OK',
+      }
+    }
+  ],
+  totalCount: 1,
+  operationStatus
+};
+
+const taxes: TaxListResponse = {
+  items: [{
     payload: {
       id: 'tax_1',
       countryId: 'germany',
       rate: 0.19,
-      typeId: 'taxType_1',
+      typeId: tax_types.items![0].payload!.id,
       abbreviation: 'MwSt.',
     },
-    status: {
-      id: 'tax_1',
-      code: 200,
-      message: 'OK'
-    }
-  }
-]
+    status
+  }],
+  operationStatus,
+};
 
-const products: ProductResponse[] = [
-  {
+const manufacturers: ManufacturerListResponse = {
+  items: [{
+    payload: {
+      id: 'manufacturer_1',
+      name: 'Manufacturer 1',
+    }
+  }]
+};
+
+const products: ProductListResponse = {
+  items: [{
     payload: {
       id: 'physicalProduct_1',
       active: true,
@@ -219,7 +282,7 @@ const products: ProductResponse[] = [
         description: 'This is a physical product',
         manufacturerId: 'manufacturer_1',
         taxIds: [
-          taxes[0].payload?.id as string,
+          taxes.items![0].payload!.id!,
         ],
         physical: {
           variants: [
@@ -283,13 +346,8 @@ const products: ProductResponse[] = [
         }
       },
     },
-    status: {
-      id: 'physicalProduct_1',
-      code: 200,
-      message: 'OK',
-    }
-  },
-  {
+    status
+  },{
     payload: {
       id: 'physicalProduct_2',
       active: true,
@@ -301,7 +359,7 @@ const products: ProductResponse[] = [
         description: 'This is a physical product',
         manufacturerId: 'manufacturer_1',
         taxIds: [
-          taxes[0].payload?.id as string,
+          taxes.items![0].payload?.id as string,
         ],
         physical: {
           variants: [
@@ -365,87 +423,75 @@ const products: ProductResponse[] = [
         }
       },
     },
-    status: {
-      id: 'physicalProduct_2',
-      code: 200,
-      message: 'OK',
-    }
-  },
-];
+    status,
+  }],
+  operationStatus,
+};
 
-const contactPoints = [
-  {
+const contactPoints: ContactPointListResponse = {
+  items: [{
     payload: {
       id: 'contactPoint_1',
       contactPointTypeIds: [
-        'legal'
+        'legal', 'billing', 'shipping',
       ],
       name: 'Contact Point 1',
       description: 'A mocked Contact Point for testing',
       email: 'info@shop.com',
       localeId: 'localization_1',
-      physicalAddressId: businessAddresses[0].address!.id,
+      physicalAddressId: 'address_1',
       telephone: '0123456789',
       timezoneId: 'timezone_1',
       website: 'www.shop.com',
     },
-    status: {
-      id: 'contactPoint_1',
-      code: 200,
-      message: 'OK',
-    }
-  }
-] as ContactPointResponse[];
+    status,
+  }],
+  operationStatus,
+};
 
-const organizations = [
-  {
+const organizations: OrganizationListResponse = {
+  items: [{
     payload: {
       id: 'organization_1',
       contactPointIds: [
-        contactPoints[0].payload?.id,
+        contactPoints.items![0].payload!.id!,
       ],
       paymentMethodIds: [],
     },
-    status: {
-      id: 'organization_1',
-      code: 200,
-      message: 'OK',
-    },
-  }
-] as OrganizationResponse[];
+    status,
+  }],
+  operationStatus
+};
 
-const shops = [
-  {
+const shops: ShopListResponse = {
+  items: [{
     payload: {
       id: 'shop_1',
       name: 'Shop1',
       description: 'a mocked shop for unit tests',
       domains: ['www.shop.com'],
-      organizationId: organizations[0].payload?.id,
+      organizationId: organizations.items![0].payload!.id,
       shopNumber: '0000000001',
     },
-    status: {
-      id: 'shop_1',
-      code: 200,
-      message: 'OK',
-    }
-  }
-] as ShopResponse[];
+    status,
+  }],
+  operationStatus,
+};
 
-const validOrders: { [key: string]: OrderList } = {
+const validOrders: Record<string, OrderList> = {
   'as superadmin': {
     items: [
       {
         id: 'validOrder_1',
         items: [
           {
-            productId: products[0]?.payload?.id,
-            variantId: products[0]?.payload?.product?.physical?.variants?.[0]?.id,
+            productId: products.items![0]!.payload!.id,
+            variantId: products.items![0]!.payload!.product?.physical?.variants?.[0]?.id,
             quantity: 4,
           },
           {
-            productId: products[1]?.payload?.id,
-            variantId: products[1]?.payload?.product?.physical?.variants?.[0]?.id,
+            productId: products.items![1]!.payload!.id,
+            variantId: products.items![1]!.payload!.product?.physical?.variants?.[0]?.id,
             quantity: 2,
           }
         ],
@@ -466,13 +512,13 @@ const validOrders: { [key: string]: OrderList } = {
         id: 'validOrder_2',
         items: [
           {
-            productId: products[0]?.payload?.id,
-            variantId: products[0]?.payload?.product?.physical?.variants?.[0]?.id,
+            productId: products.items![0]?.payload?.id,
+            variantId: products.items![0]?.payload?.product?.physical?.variants?.[0]?.id,
             quantity: 4,
           },
           {
-            productId: products[1]?.payload?.id,
-            variantId: products[1]?.payload?.product?.physical?.variants?.[0]?.id,
+            productId: products.items![1]?.payload?.id,
+            variantId: products.items![1]?.payload?.product?.physical?.variants?.[0]?.id,
             quantity: 2,
           }
         ],
@@ -498,13 +544,13 @@ const invalidOrders: { [key: string]: OrderList } = {
         id: 'invalidOrder_1',
         items: [
           {
-            productId: products[0]?.payload?.id,
-            variantId: products[0]?.payload?.product?.physical?.variants?.[0]?.id,
+            productId: products.items![0]?.payload?.id,
+            variantId: products.items![0]?.payload?.product?.physical?.variants?.[0]?.id,
             quantity: 4,
           },
           {
-            productId: products[1]?.payload?.id,
-            variantId: products[1]?.payload?.product?.physical?.variants?.[0]?.id,
+            productId: products.items![1]?.payload?.id,
+            variantId: products.items![1]?.payload?.product?.physical?.variants?.[0]?.id,
             quantity: 2,
           }
         ],
@@ -537,8 +583,8 @@ const invalidOrders: { [key: string]: OrderList } = {
         id: 'invalidOrder_2',
         items: [
           {
-            productId: products[0]?.payload?.id,
-            variantId: products[0]?.payload?.product?.physical?.variants?.[0]?.id,
+            productId: products.items![0]?.payload?.id,
+            variantId: products.items![0]?.payload?.product?.physical?.variants?.[0]?.id,
             quantity: 4,
           }
         ],
@@ -579,11 +625,7 @@ const users: { [key: string]: UserResponse } = {
         }
       ],
     },
-    status: {
-      id: 'root_tech_user',
-      code: 200,
-      message: 'OK',
-    }
+    status,
   },
   superadmin: {
     payload: {
@@ -612,11 +654,7 @@ const users: { [key: string]: UserResponse } = {
       ],
       meta: mainMeta,
     },
-    status: {
-      id: 'superadmin',
-      code: 200,
-      message: 'OK',
-    }
+    status,
   },
   admin: {
     payload: {
@@ -656,12 +694,18 @@ const users: { [key: string]: UserResponse } = {
       ],
       meta: mainMeta,
     },
+    status,
+  },
+  user_1: {
+    payload: {
+      id: 'user_1'
+    },
     status: {
-      id: 'admin',
+      id: 'user_1',
       code: 200,
       message: 'OK',
     }
-  },
+  }
 };
 
 const hierarchicalScopes: { [key: string]: HierarchicalScope[] } = {
@@ -769,7 +813,7 @@ export const samples = {
     valid: validOrders,
     invalid: invalidOrders,
   },
-  shipping_details: {
+  shippingDetails: {
     senderAddress: businessAddresses,
   },
 };
@@ -791,7 +835,11 @@ export const rules = {
     read: (
       call: any,
       callback: (error: any, response: UserListResponse) => void,
-    ) => callback(null, {}),
+    ) => callback(null, {
+      items: Object.values(users),
+      totalCount: Object.values(users).length,
+      operationStatus,
+    }),
     findByToken: (
       call: any,
       callback: (error: any, response: UserResponse) => void,
@@ -819,141 +867,67 @@ export const rules = {
     read: (
       call: any,
       callback: (error: any, response: ShopListResponse) => void,
-    ) => callback(null, {
-      items: shops,
-      totalCount: shops.length,
-      operationStatus
-    }),
+    ) => callback(null, shops),
   },
   organization: {
     read: (
       call: any,
       callback: (error: any, response: OrganizationListResponse) => void,
-    ) => callback(null, {
-      items: organizations,
-      totalCount: organizations.length,
-      operationStatus,
-    })
+    ) => callback(null, organizations),
   },
   customer: {
     read: (
       call: any,
       callback: (error: any, response: CustomerListResponse) => void,
-    ) => callback(null, {
-      items: [
-        {
-          payload: {
-            id: 'customer_1',
-            private: {
-              userId: 'user_1',
-              contactPointIds: [
-                'contactPoint_1'
-              ],
-            },
-          },
-          status: {
-            id: 'customer_1',
-            code: 200,
-            message: 'OK',
-          }
-        }
-      ],
-      totalCount: 1,
-      operationStatus
-    }),
+    ) => callback(null, customers),
   },
   contact_point: {
     read: (
       call: any,
       callback: (error: any, response: ContactPointListResponse) => void,
-    ) => callback(null, {
-      items: contactPoints,
-      totalCount: contactPoints.length,
-      operationStatus,
-    })
+    ) => callback(null, contactPoints),
   },
   address: {
     read: (
       call: any,
       callback: (error: any, response: AddressListResponse) => void,
-    ) => callback(null, {
-      items: [
-        ...residentialAddresses,
-        ...businessAddresses,
-      ].map(item => ({
-        payload: item.address,
-        status: {
-          id: item.address?.id,
-          code: 200,
-          message: 'OK',
-        }
-      })),
-      totalCount: residentialAddresses.length + businessAddresses.length,
-      operationStatus,
-    })
+    ) => callback(null, addresses)
   },
   country: {
     read: (
       call: any,
       callback: (error: any, response: CountryListResponse) => void,
-    ) => callback(null, {
-      items: countries,
-      totalCount: countries.length,
-      operationStatus,
-    }),
+    ) => callback(null, countries),
   },
   product: {
     read: (
       call: any,
       callback: (error: any, response: ProductListResponse) => void,
-    ) => callback(null, {
-      items: products,
-      totalCount: products.length,
-      operationStatus,
-    }),
+    ) => callback(null, products),
   },
   currency: {
     read: (
       call: any,
       callback: (error: any, response: CurrencyListResponse) => void,
-    )=> callback(null, {
-      items: currencies,
-      totalCount: currencies.length,
-      operationStatus
-    }),
+    )=> callback(null, currencies),
   },
   tax: {
     read: (
       call: any,
       callback: (error: any, response: TaxListResponse) => void,
-    )=> callback(null, {
-      items: taxes,
-      totalCount: taxes.length,
-      operationStatus
-    }),
+    )=> callback(null, taxes),
   },
   tax_type: {
     read: (
       call: any,
       callback: (error: any, response: TaxTypeListResponse) => void,
-    ) => callback(null, {
-      items: [
-        {
-          payload: {
-            id: 'taxType_1',
-            type: 'MwSt.',
-            description: 'Standard Mehrwert Steuer',
-          },
-          status: {
-            id: 'taxType_1',
-            code: 200,
-            message: 'OK',
-          }
-        }
-      ],
-      totalCount: 1,
-      operationStatus
-    }),
+    ) => callback(null, tax_types),
+  },
+  manufacturer: {
+    read: (
+      call: any,
+      callback: (error: any, response: ManufacturerListResponse) => void,
+    )=> callback(null, manufacturers),
   },
   fulfillment_product: {
     find: (
@@ -1053,11 +1027,7 @@ export const rules = {
               ]
             }
           ],
-          status: {
-            id: 'validOrder_2',
-            code: 200,
-            message: 'OK',
-          }
+          status
         }
       ],
       totalCount: 1,

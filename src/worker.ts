@@ -24,6 +24,12 @@ import {
 import {
   protoMetadata as ResourceBaseMeta,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
+import {
+  protoMetadata as RenderingMeta
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/rendering.js';
+import {
+  protoMetadata as NotificationReqMeta
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/notification_req.js';
 import { ServiceConfig, createServiceConfig } from '@restorecommerce/service-config';
 import { createLogger } from '@restorecommerce/logger';
 import { OrderingService } from './service.js';
@@ -40,6 +46,8 @@ registerProtoMeta(
   OrderMeta,
   CommandInterfaceMeta,
   ResourceBaseMeta,
+  RenderingMeta,
+  NotificationReqMeta,
 );
 
 export type Handler = (msg: any, context: any, config: any, eventName: string) => any;
@@ -170,6 +178,12 @@ export class Worker {
         error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
       );
     },
+    handleRenderResponse: (msg: any, context: any, config: any, eventName: string) => {
+      return this.orderingService?.handleRenderResponse(msg, context).then(
+        () => this.logger?.info(`Event ${eventName} handled.`),
+        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
+      );
+    },
     handleQueuedJob: (msg: any, context: any, config: any, eventName: string) => {
       return this.serviceActions?.get(msg?.type)?.(msg?.data?.payload, context, config, msg?.type).then(
         () => this.logger?.info(`Job ${msg?.type} done.`),
@@ -246,6 +260,7 @@ export class Worker {
     logger.verbose('Setting up ordering services');
     this.orderingService = new OrderingService(
       this.topics.get('ordering.resource')!,
+      this.topics.get('rendering')!,
       db,
       cfg,
       logger

@@ -75,6 +75,9 @@
     },
     "invoice": {
       "address": "invoicing-srv:50051"
+    },
+    "notification_req": {
+      "address": "notification-srv:50051"
     }
   },
   "authorization": {
