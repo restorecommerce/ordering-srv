@@ -1,11 +1,7 @@
 import { BigNumber } from 'bignumber.js';
 import {
-  Client,
-} from '@restorecommerce/grpc-client';
-import {
   Item as OrderItem,
   Order,
-  OrderList,
   OrderResponse,
   OrderListResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order.js';
@@ -15,48 +11,25 @@ import {
   IndividualProduct,
   PhysicalProduct,
   PhysicalVariant,
-  ProductResponse,
-  ProductServiceDefinition,
   ServiceProduct,
   ServiceVariant,
   VirtualProduct,
   VirtualVariant
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/product.js';
 import {
-  TaxServiceDefinition, Tax
+  Tax
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/tax.js';
 import {
-  CustomerServiceDefinition, CustomerResponse, CustomerType,
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/customer.js';
-import {
-  ShopServiceDefinition, ShopResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/shop.js';
-import {
-  OrganizationResponse, OrganizationServiceDefinition
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/organization.js';
-import {
-  ContactPointServiceDefinition, ContactPointResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/contact_point.js';
-import {
-  CurrencyServiceDefinition, CurrencyResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/currency.js';
-import {
-  AddressServiceDefinition, AddressResponse,
   BillingAddress,
   ShippingAddress
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/address.js';
 import {
-  CountryServiceDefinition, CountryResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/country.js';
-import {
-  Setting, SettingResponse
+  Setting
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/setting.js';
 import {
-  FulfillmentServiceDefinition,
   FulfillmentResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment.js';
 import {
-  FulfillmentProductServiceDefinition,
   FulfillmentSolutionResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment_product.js';
 import {
@@ -69,9 +42,9 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/status.js';
 import {
   Position,
-  InvoiceServiceDefinition
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/invoice.js';
 import {
+  Amount,
   VAT
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/amount.js';
 import {
@@ -169,7 +142,7 @@ export type AggregatedItem = OrderItem & {
   product: PositionProduct;
 };
 
-export type AggregationTemplate = {
+export type OrderAggregationTemplate = {
   shops?: ResourceMap<Shop>;
   customers?: ResourceMap<Customer>;
   organizations?: ResourceMap<Organization>;
@@ -191,7 +164,7 @@ export type AggregationTemplate = {
   settings?: ResourceMap<Setting>;
 };
 
-export type AggregatedOrderListResponse = Aggregation<OrderListResponse, AggregationTemplate>;
+export type AggregatedOrderListResponse = Aggregation<OrderListResponse, OrderAggregationTemplate>;
 
 export const toObjectMap = <T extends Entity>(items: T[]): ObjectMap<T> => items.reduce(
   (a, b) => {
@@ -248,11 +221,9 @@ export const DefaultSetting = {
   shop_order_send_withdrawn_enabled: true,
   shop_fulfillment_evaluate_enabled: true,
   shop_fulfillment_create_enabled: true,
-  shop_fulfillment_trigger_enabled: false,
   shop_invoice_create_enabled: true,
   shop_invoice_render_enabled: true,
   shop_invoice_send_enabled: false,
-  shop_invoice_trigger_enabled: false,
   shop_order_error_cleanup_enabled: true,
   shop_email_render_options: undefined as any,
   shop_email_render_strategy: Payload_Strategy.INLINE,
@@ -297,6 +268,117 @@ export const parseSetting = (key: string, value: string) => {
     return value;
   }
 }
+
+export const filterTax = (
+  tax: Tax,
+  origin: Country,
+  destination: Country,
+  private_customer: boolean,
+) => (
+  private_customer &&
+  tax.country_id === origin.id &&
+  (
+    !destination.economic_areas ||
+    origin.economic_areas?.some(
+      e => destination.economic_areas.includes(e)
+    )
+  )
+);
+
+export const calcAmount = (
+  gross: number | BigNumber,
+  taxes: RatioedTax[],
+  origin: Country,
+  destination: Country,
+  currency?: Currency,
+  private_customer = true,
+): Amount => {
+  taxes = taxes.filter(
+    tax => filterTax(
+      tax,
+      origin,
+      destination,
+      private_customer,
+    )
+  );
+  gross = new BigNumber(gross);
+  const precision = currency?.precision ?? 2;
+  const vats = taxes.map((tax): VAT => ({
+    tax_id: tax.id,
+    vat: gross.multipliedBy(
+      tax.rate
+    ).multipliedBy(
+      tax.tax_ratio ?? 1.0
+    ).decimalPlaces(
+      precision
+    ).toNumber(),
+  }));
+  const net = vats.reduce(
+    (a, b) => a.plus(b.vat),
+    gross
+  );
+  return {
+    currency_id: currency?.id,
+    gross: gross.decimalPlaces(precision).toNumber(),
+    net: net.decimalPlaces(precision).toNumber(),
+    vats,
+  };
+};
+
+export const calcTotalAmounts = (
+  amounts: Amount[],
+  currency_map?: ResourceMap<Currency>, 
+): Amount[] => {
+  const amount_map = amounts?.reduce(
+    (a, b) => {
+      const c = a[b.currency_id];
+      if (c) {
+        c.push(b);
+      }
+      else {
+        a[b.currency_id] = [b];
+      }
+      return a;
+    },
+    {} as Record<string, Amount[]>
+  ) ?? {};
+
+  const total_amounts = Object.entries(amount_map).map(
+    ([currency_id, amounts]) => {
+      const precision = currency_map.get(currency_id, null)?.precision ?? 2;
+      return {
+        currency_id,
+        gross: amounts.reduce(
+          (a, b) => a.plus(b.gross), new BigNumber(0)
+        ).decimalPlaces(precision).toNumber(),
+        net: amounts.reduce(
+          (a, b) => a.plus(b.net), new BigNumber(0)
+        ).decimalPlaces(precision).toNumber(),
+        vats: Object.entries(amounts.flatMap(
+          a => a.vats
+        ).reduce(
+          (a, b) => {
+            const c = a[b.tax_id];
+            if (c) {
+              c.push(b);
+            }
+            else {
+              a[b.tax_id] = [b];
+            }
+            return a;
+          },
+          {} as Record<string, VAT[]>
+        )).map(([tax_id, v]) => ({
+          tax_id,
+          vat: v.reduce(
+            (a, b) => a.plus(b.vat), new BigNumber(0)
+          ).decimalPlaces(precision).toNumber()
+        })),
+      } as Amount
+    }
+  );
+  return total_amounts;
+};
 
 const mergeProductVariantRecursive = (
   nature: ProductNature,
@@ -347,13 +429,11 @@ export const resolveCustomerAddress = (
     order.customer_id
   );
   const contact_point = aggregation.contact_points?.getMany(
-    [].concat(
-      aggregation.organizations?.get(
-        customer?.commercial?.organization_id
-        ?? customer?.public_sector?.organization_id
-      )?.contact_point_ids,
-      customer?.private?.contact_point_ids
-    ).filter(c => c)
+    customer?.private?.contact_point_ids
+    ?? aggregation.organizations?.get(
+      customer?.commercial?.organization_id
+      ?? customer?.public_sector?.organization_id
+    )?.contact_point_ids
   )?.find(
     cp => cp.contact_point_type_ids?.includes(contact_point_type_id)
   );
@@ -368,7 +448,7 @@ export const resolveCustomerAddress = (
       phone: contact_point.telephone,
     }
   };
-}
+};
 
 export const resolveOrder = (
   aggregation: AggregatedOrderListResponse,
@@ -466,34 +546,35 @@ export const resolveOrder = (
       currency: currency_resolver,
     }
   }];
+  const order_resolver = {
+    customer: Resolver('customer_id', aggregation.customers, {
+      commercial: {
+        organization: organization_resolver,
+      },
+      public_sector: {
+        organization: organization_resolver,
+      },
+      private: {
+        contact_points: contact_points_resolver,
+        user: user_resolver,
+      },
+    }),
+    shop: Resolver('shop_id', aggregation.shops, {
+      organization: organization_resolver
+    }),
+    user: user_resolver,
+    items: item_resolver,
+    billing_address: {
+      address: address_resolver
+    },
+    shipping_address: {
+      address: address_resolver
+    },
+  };
 
   const resolved = resolve(
     order,
-    {
-      customer: Resolver('customer_id', aggregation.customers, {
-        commercial: {
-          organization: organization_resolver,
-        },
-        public_sector: {
-          organization: organization_resolver,
-        },
-        private: {
-          contact_points: contact_points_resolver,
-          user: user_resolver,
-        },
-      }),
-      shop: Resolver('shop_id', aggregation.shops, {
-        organization: organization_resolver
-      }),
-      user: user_resolver,
-      items: item_resolver,
-      billing_address: {
-        address: address_resolver
-      },
-      shipping_address: {
-        address: address_resolver
-      },
-    }
+    order_resolver,
   );
 
   resolved.items?.forEach(
@@ -533,12 +614,12 @@ export const unmarshallProtobufAny = (payload: Any): any => JSON.parse(
 
 export const packRenderData = (
   aggregation: AggregatedOrderListResponse,
-  invoice: Order,
+  order: Order,
 ) => {
   const resolved = {
-    invoice: resolveOrder(
+    order: resolveOrder(
       aggregation,
-      invoice
+      order
     ),
   };
   const buffer = marshallProtobufAny(resolved);
@@ -591,3 +672,9 @@ export const createOperationStatusCode = (
     '{id}', id ?? 'undefined'
   ) ?? 'Unknown status',
 });
+
+export const concat = <T>(...lists: T[]) => lists.filter(
+  list => list
+).flatMap(
+  list => list
+);

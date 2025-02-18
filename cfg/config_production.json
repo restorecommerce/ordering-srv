@@ -40,6 +40,15 @@
     "product": {
       "address": "catalog-srv:50051"
     },
+    "manufacturer": {
+      "address": "catalog-srv:50051"
+    },
+    "category": {
+      "address": "catalog-srv:50051"
+    },
+    "prototype": {
+      "address": "catalog-srv:50051"
+    },
     "contact_point": {
       "address": "resource-srv:50051"
     },

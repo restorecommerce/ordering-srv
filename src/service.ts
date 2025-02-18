@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import { parse as CSV } from 'csv-parse/sync';
+import { type CallContext } from 'nice-grpc-common';
 import { BigNumber } from 'bignumber.js';
 import { Logger } from '@restorecommerce/logger';
 import { ServiceConfig } from '@restorecommerce/service-config';
@@ -20,7 +21,6 @@ import {
   DefaultResourceFactory,
   DefaultMetaDataInjector,
   access_controlled_function,
-  access_controlled_service,
   injects_meta_data,
   resolves_subject,
 } from '@restorecommerce/acs-client';
@@ -81,8 +81,6 @@ import {
 import {
   DeleteRequest,
   Filter_ValueType,
-  ResourceListResponse,
-  ResourceResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import {
   Status,
@@ -96,9 +94,6 @@ import {
   InvoiceServiceDefinition,
   InvoiceList
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/invoice.js';
-import {
-  VAT
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/amount.js';
 import {
   Subject
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/auth.js';
@@ -142,6 +137,7 @@ import {
   ClientRegister,
   ResourceAggregator,
   ResourceMap,
+  Pipe,
 } from './experimental/index.js';
 import {
   BigAmount,
@@ -154,29 +150,27 @@ import {
   ProductVariant,
   RatioedTax,
   toObjectMap,
-  toObjectListMap,
-  VATMap,
+  // toObjectListMap,
   parseSetting,
   ResolvedSetting,
   DefaultSetting,
-  AggregationTemplate,
+  OrderAggregationTemplate,
   AggregatedOrderListResponse,
   resolveCustomerAddress,
   marshallProtobufAny,
-  packRenderData,
   createOperationStatusCode,
   createStatusCode,
   throwStatusCode,
   resolveOrder,
   OrderMap,
-  PositionMap,
+  calcAmount,
+  calcTotalAmounts,
 } from './utils.js';
 
 
 const CREATE_FULFILLMENT = 'createFulfillment';
 const CREATE_INVOICE = 'createInvoice';
 
-@access_controlled_service
 export class OrderingService
   extends AccessControlledServiceBase<OrderListResponse, OrderList>
   implements OrderServiceImplementation
@@ -300,8 +294,8 @@ export class OrderingService
     },
   };
 
-  protected readonly emitters: any;
   protected readonly tech_user: Subject;
+  protected readonly emitters: Record<string, string>;
   protected readonly fulfillment_service?: Client<FulfillmentServiceDefinition>;
   protected readonly fulfillment_product_service?: Client<FulfillmentProductServiceDefinition>;
   protected readonly invoice_service?: Client<InvoiceServiceDefinition>;
@@ -320,7 +314,7 @@ export class OrderingService
     return this.name;
   }
 
-  get instanceType() {
+  get instance_type() {
     return this.urns.instanceType;
   }
 
@@ -356,25 +350,25 @@ export class OrderingService
       ...this.operation_status_codes,
       ...cfg.get('operationStatusCodes'),
     };
-    this.emitters = cfg.get('events:emitters');
     this.contact_point_type_ids = {
       ...this.contact_point_type_ids,
       ...cfg.get('contactPointTypeIds'),
     };
     this.default_setting = {
       ...DefaultSetting,
-      ...cfg.get('default:Setting'),
+      ...cfg.get('defaults:Setting'),
     };
-
+    
+    this.emitters = cfg.get('events:emitters');
     this.tech_user = cfg.get('authorization:techUser');
 
     // optional Fulfillment
     const fulfillment_cfg = cfg.get('client:fulfillment');
     if (fulfillment_cfg.disabled?.toString() === 'true') {
-      this.logger.info('Fulfillment-srv disabled!');
+      this.logger?.info('Fulfillment-srv disabled!');
     }
     else if (fulfillment_cfg) {
-      this.logger.debug('Fulfillment-srv enabled.', fulfillment_cfg);
+      this.logger?.debug('Fulfillment-srv enabled.', fulfillment_cfg);
       this.fulfillment_service = createClient(
         {
           ...fulfillment_cfg,
@@ -385,15 +379,15 @@ export class OrderingService
       );
     }
     else {
-      this.logger.warn('fulfillment config is missing!');
+      this.logger?.warn('fulfillment config is missing!');
     }
 
     const fulfillment_product_cfg = cfg.get('client:fulfillment_product');
     if (fulfillment_product_cfg.disabled?.toString() === 'true') {
-      this.logger.info('Fulfillment-Product-srv disabled!');
+      this.logger?.info('Fulfillment-Product-srv disabled!');
     }
     else if (fulfillment_product_cfg) {
-      this.logger.debug('Fulfillment-Product-srv enabled.', fulfillment_product_cfg);
+      this.logger?.debug('Fulfillment-Product-srv enabled.', fulfillment_product_cfg);
       this.fulfillment_product_service = createClient(
         {
           ...fulfillment_product_cfg,
@@ -404,12 +398,12 @@ export class OrderingService
       );
     }
     else {
-      this.logger.warn('fulfillment_product config is missing!');
+      this.logger?.warn('fulfillment_product config is missing!');
     }
 
     const notification_cfg = cfg.get('client:notification_req');
     if (notification_cfg.disabled?.toString() === 'true') {
-      this.logger.info('Notification-srv disabled!');
+      this.logger?.info('Notification-srv disabled!');
     }
     else if (notification_cfg) {
       this.notification_service = createClient(
@@ -422,12 +416,12 @@ export class OrderingService
       );
     }
     else {
-      this.logger.warn('notification config is missing!');
+      this.logger?.warn('notification config is missing!');
     }
 
     const invoicing_cfg = cfg.get('client:invoice');
     if (invoicing_cfg.disabled?.toString() === 'true') {
-      this.logger.info('Invoicing-srv disabled!');
+      this.logger?.info('Invoicing-srv disabled!');
     }
     else if (invoicing_cfg) {
       this.invoice_service = createClient(
@@ -440,35 +434,14 @@ export class OrderingService
       );
     }
     else {
-      this.logger.warn('invoice config is missing!');
+      this.logger?.warn('invoice config is missing!');
     }
-  }
-
-  private catchStatusError<T extends ResourceResponse>(e?: any, item?: T): T {
-    item ??= {} as T;
-    item.status = {
-      id: item?.payload?.id,
-      code: Number.isInteger(e?.code) ? e?.code : 500,
-      message: e?.message ?? e?.details ?? (e ? JSON.stringify(e) : 'Unknown Error!')
-    };
-    this.logger?.warn(e?.stack, item);
-    return item;
-  }
-
-  private catchOperationError<T extends ResourceListResponse>(e?: any, response?: T): T {
-    response ??= {} as T;
-    response.operation_status = {
-      code: e?.code ?? 500,
-      message: e?.message ?? e?.details ?? (e ? JSON.stringify(e) : 'Unknown Error!'),
-    };
-    this.logger?.error(e?.stack, response);
-    return response;
   }
 
   private getOrderMap(
     ids: (string | undefined)[] | undefined,
     subject?: Subject,
-    context?: any,
+    context?: CallContext,
   ): Promise<OrderMap> {
     return this.get(
       ids,
@@ -522,7 +495,7 @@ export class OrderingService
   protected async aggregate(
     orders: OrderListResponse,
     subject?: Subject,
-    context?: any,
+    context?: CallContext,
   ): Promise<AggregatedOrderListResponse> {
     const aggregation = await this.aggregator.aggregate(
       orders,
@@ -554,7 +527,7 @@ export class OrderingService
           entity: 'Product',
         },
       ],
-      {} as AggregationTemplate,
+      {} as OrderAggregationTemplate,
       subject,
       context,
     ).then(
@@ -571,6 +544,7 @@ export class OrderingService
           {
             service: UserServiceDefinition,
             map_by_ids: (aggregation) => [].concat(
+              subject?.id,
               aggregation.items?.map(item => item.payload.user_id),
               aggregation.customers?.all.map(customer => customer.private?.user_id)
             ),
@@ -664,7 +638,7 @@ export class OrderingService
             entity: 'Currency'
           }
         ],
-        {} as AggregationTemplate,
+        {} as OrderAggregationTemplate,
         subject,
         context,
       )
@@ -686,7 +660,7 @@ export class OrderingService
             entity: 'ContactPoint',
           },
         ],
-        {} as AggregationTemplate,
+        {} as OrderAggregationTemplate,
         subject,
         context,
       )
@@ -711,7 +685,7 @@ export class OrderingService
             entity: 'Address',
           },
         ],
-        {} as AggregationTemplate,
+        {} as OrderAggregationTemplate,
         subject,
         context,
       )
@@ -731,12 +705,18 @@ export class OrderingService
               aggregation.currencies.all.flatMap(
                 currency => currency.country_ids
               ),
+              aggregation.items.map(
+                item => item.payload?.billing_address?.address?.country_id
+              ),
+              aggregation.items.map(
+                item => item.payload?.shipping_address?.address?.country_id
+              ),
             ),
             container: 'countries',
             entity: 'Country',
           },
         ],
-        {} as AggregationTemplate,
+        {} as OrderAggregationTemplate,
         subject,
         context,
       )
@@ -856,9 +836,10 @@ export class OrderingService
   private async getFulfillmentMap(
     order_ids: (string | undefined)[] | undefined,
     subject?: Subject,
-    context?: any,
+    context?: CallContext,
+    fulfillments?: FulfillmentResponse[],
   ): Promise<FulfillmentMap> {
-    if (this.fulfillment_service) return {};
+    if (!this.fulfillment_service) return {};
     order_ids = [...new Set<string | undefined>(order_ids ?? [])];
 
     if (order_ids.length > 1000) {
@@ -868,17 +849,17 @@ export class OrderingService
       );
     }
 
-    return await this.fulfillment_service!.read(
+    fulfillments ??= await this.fulfillment_service!.read(
       {
         filters: [{
           filters: [
             {
-              field: 'reference.instance_type',
-              operation: Filter_Operation.eq,
-              value: this.instanceType,
+              field: 'references[*].instance_type',
+              operation: Filter_Operation.in,
+              value: this.instance_type,
             },
             {
-              field: 'reference.instance_id',
+              field: 'references[*].instance_id',
               operation: Filter_Operation.in,
               value: JSON.stringify(order_ids),
               type: Filter_ValueType.ARRAY
@@ -892,12 +873,32 @@ export class OrderingService
     ).then(
       response => {
         if (response.operation_status?.code === 200) {
-          return toObjectListMap(response.items);
+          return response.items;
         }
         else {
           throw response.operation_status;
         }
       }
+    );
+    
+    return fulfillments.reduce(
+      (a, b) => {
+        b.payload?.references.filter(
+          r => r.instance_type === this.instance_type
+        ).forEach(
+          r => {
+            const c = a[r.instance_id];
+            if (c) {
+              c.push(b);
+            }
+            else {
+              a[r.instance_id] = [b];
+            }
+          }
+        );
+        return a;
+      },
+      {} as FulfillmentMap
     );
   }
 
@@ -947,10 +948,10 @@ export class OrderingService
     return resolved_settings;
   }
 
-  protected async aggregateOrderListResponse(
+  protected async resolveOrderListResponse(
     aggregation: AggregatedOrderListResponse,
     subject?: Subject,
-    context?: any,
+    context?: CallContext,
   ): Promise<OrderListResponse> {
     if (!aggregation?.items?.length) {
       return {
@@ -997,19 +998,51 @@ export class OrderingService
 
     const promises = aggregation.items?.map(async (order) => {
       try {
-        const resolved = resolveOrder(
-          aggregation,
-          order.payload,
-        );
-        const customer = resolved.customer;
-        const shop = resolved.shop;
-        const shop_contact_point = resolved.shop.organization.contact_points.find(
-          (cp) => cp.contact_point_type_ids?.includes(
-            this.contact_point_type_ids.legal
-          )
+        const customer = aggregation.customers.get(order.payload.customer_id);
+        const billing_country = aggregation.countries.get(
+          order.payload?.billing_address?.address?.country_id
         );
 
-        if (!shop_contact_point) {
+        if (customer?.private) {
+          order.payload.customer_type ??= CustomerType.PRIVATE;
+          order.payload.user_id ??= customer?.private?.user_id;
+        }
+        else if (customer?.commercial) {
+          const vat_id = aggregation.organizations.get(
+            customer.commercial?.organization_id
+          )?.vat_id;
+          order.payload.customer_type ??= CustomerType.COMMERCIAL;
+          order.payload.customer_vat_id ??= vat_id;
+        }
+        else if (customer?.public_sector) {
+          const vat_id = aggregation.organizations.get(
+            customer.public_sector?.organization_id
+          )?.vat_id;
+          order.payload.customer_type ??= CustomerType.PUBLIC_SECTOR;
+          order.payload.customer_vat_id ??= vat_id;
+        }
+        order.payload.user_id ??= subject?.id;
+
+        const shop = aggregation.shops.get(order.payload.shop_id); 
+        const shop_country = new Pipe(
+          aggregation.shops.get(order.payload.shop_id)
+        ).then(
+          shop => aggregation.organizations.get(shop.organization_id)
+        ).then(
+          orga => aggregation.contact_points.getMany(orga.contact_point_ids)
+        ).then(
+          cps => cps.find(
+            (cp) => cp.contact_point_type_ids?.includes(
+              this.contact_point_type_ids.legal
+            )
+          )
+        ).then(
+          cp => aggregation.addresses.get(cp.physical_address_id)
+        ).then(
+          address => aggregation.countries.get(address.country_id)
+        ).value;
+
+        if (!shop_country) {
           throw createStatusCode(
             order.payload.id,
             'Shop',
@@ -1018,26 +1051,8 @@ export class OrderingService
           )
         };
 
-        const shop_address = aggregation.addresses.get(shop_contact_point.physical_address_id);
-        const shop_country = aggregation.countries.get(shop_address.country_id);
-        const billing_country = resolved.billing_address.address.country;
-
-        if (customer?.private) {
-          order.payload.customer_type ??= CustomerType.PRIVATE;
-          order.payload.user_id ??= customer?.private?.user_id;
-        }
-        else if (customer?.commercial) {
-          order.payload.customer_type ??= CustomerType.COMMERCIAL;
-          order.payload.customer_vat_id ??= customer.commercial.organization.vat_id;
-        }
-        else if (customer?.public_sector) {
-          order.payload.customer_type ??= CustomerType.PUBLIC_SECTOR;
-          order.payload.customer_vat_id ??= customer.public_sector.organization.vat_id;
-        }
-        order.payload.user_id ??= subject?.id;
-
         if (order.payload.items?.length) {
-          await Promise.all(resolved.items?.map(
+          await Promise.all(order.payload.items?.map(
             async (item) => {
               if (!order.payload.shipping_address) {
                 throwStatusCode(
@@ -1048,46 +1063,20 @@ export class OrderingService
                 );
               }
 
-              const product = item.product;
+              const product = aggregation.products.get(item.product_id);
               const nature = product.product?.physical ?? product.product?.virtual;
               const variant = this.mergeProductVariantRecursive(nature, item.variant_id);
               const currency = aggregation.currencies.get(variant.price?.currency_id);
-              const precision = currency?.precision ?? 2;
               const taxes = await getTaxesRecursive(product);
               const unit_price = product.bundle ? product.bundle?.price : variant?.price;
               const gross = new BigNumber(
                 unit_price?.sale ? unit_price?.sale_price ?? 0 : unit_price?.regular_price ?? 0
               ).multipliedBy(item.quantity ?? 0);
-              const vats = taxes.filter(
-                t => (
-                  t.country_id === shop_country?.id &&
-                  shop_country?.economic_areas?.some(
-                    ea => billing_country?.economic_areas?.includes(ea)
-                  ) && (
-                    product.product.tax_ids?.includes(t.id!)
-                    || variant.tax_ids?.includes(t.id!)
-                  )
-                )
-              ).map(
-                (t): VAT => ({
-                  tax_id: t.id,
-                  vat: gross.multipliedBy(
-                    t.rate!
-                  ).multipliedBy(
-                    t.tax_ratio!
-                  ).decimalPlaces(
-                    precision
-                  ).toNumber()
-                })
+              item.amount = calcAmount(
+                gross, taxes, shop_country,
+                billing_country, currency,
+                !!customer.private?.user_id
               );
-              const net = vats.reduce((a, b) => a.plus(b.vat!), gross);
-              item.unit_price = unit_price;
-              item.amount = {
-                currency_id: unit_price.currency_id,
-                gross: gross.decimalPlaces(precision).toNumber(),
-                net: net.decimalPlaces(precision).toNumber(),
-                vats: vats.length ? vats : [{ vat: 0 }],
-              };
             }
           ) ?? []);
         }
@@ -1248,14 +1237,14 @@ export class OrderingService
 
   protected async loadDefaultTemplates(
     subject?: Subject,
-    context?: any
+    context?: CallContext
   ) {
     if(this.default_templates.length) {
       return this.default_templates;
     }
 
-    this.default_templates.push(...(this.cfg.get('default:Templates') ?? []));
-    const ids = this.default_templates.map(t => t.id);
+    this.default_templates.push(...(this.cfg.get('defaults:Templates') ?? []));
+    const ids = this.default_templates.map(t => t.id).filter(id => id);
     if (ids.length) {
       await this.aggregator.getByIds(
         ids,
@@ -1281,7 +1270,7 @@ export class OrderingService
     ids: string[],
     state: OrderState,
     subject?: Subject,
-    context?: any
+    context?: CallContext
   ): Promise<OrderListResponse> {
     try {
       const responseMap = await this.getOrderMap(
@@ -1299,7 +1288,7 @@ export class OrderingService
         }
       );
 
-      const response = await this.insecUpdate(
+      const response = await this.superUpdate(
         {
           items,
           total_count: items.length,
@@ -1336,9 +1325,9 @@ export class OrderingService
     }
   }
 
-  public override insecCreate(
+  public override superCreate(
     request: OrderList,
-    context?: any
+    context?: CallContext
   ) {
     request?.items?.forEach(
       item => {
@@ -1347,7 +1336,7 @@ export class OrderingService
         }
       }
     );
-    return super.insecCreate(request, context);
+    return super.superCreate(request, context);
   }
 
   @resolves_subject()
@@ -1362,7 +1351,7 @@ export class OrderingService
   })
   public async evaluate(
     request: OrderList,
-    context?: any
+    context?: CallContext
   ): Promise<OrderListResponse> {
     try {
       const aggregation = await this.aggregate(
@@ -1374,7 +1363,7 @@ export class OrderingService
         request.subject,
         context,
       );
-      const orders = await this.aggregateOrderListResponse(
+      const orders = await this.resolveOrderListResponse(
         aggregation,
         request.subject,
         context
@@ -1398,10 +1387,11 @@ export class OrderingService
   })
   public async submit(
     request: OrderList,
-    context?: any
+    context?: CallContext
   ): Promise<OrderSubmitListResponse> {
+    this.logger?.error('CONTEXT', { context });
     try {
-      await this.insecRead(
+      await this.superRead(
         {
           filters: [
             {
@@ -1451,7 +1441,7 @@ export class OrderingService
         aggregation
       );
 
-      const response: OrderSubmitListResponse  = await this.aggregateOrderListResponse(
+      const response: OrderSubmitListResponse  = await this.resolveOrderListResponse(
         aggregation,
         request.subject,
         context,
@@ -1469,7 +1459,7 @@ export class OrderingService
       );
 
       if (response.operation_status?.code !== 200 && response.operation_status?.code !== 207) {
-        this.logger.error('On Order Submit', response);
+        this.logger?.error('On Order Submit', response);
         return response;
       }
       
@@ -1491,6 +1481,7 @@ export class OrderingService
             },
             context,
             response_map,
+            aggregation,
           ).then(
             r => {
               r.items?.forEach(
@@ -1535,7 +1526,8 @@ export class OrderingService
               subject: this.tech_user ?? request.subject,
             },
             context,
-            toObjectMap(response.orders),
+            response_map,
+            aggregation,
           ).then(
             r => {
               r.items?.forEach(
@@ -1570,41 +1562,48 @@ export class OrderingService
           this.logger?.debug('Send notifications on submit...');
           const default_templates = await this.loadDefaultTemplates().then(
             df => df.filter(
-              template => template.use_case?.toString() === 'ORDER_CONFIRMATION' // TemplateUseCase.ORDER_CONFIRMATION
+              template => template.use_case?.toString() === 'ORDER_CONFIRMATION_EMAIL' // TemplateUseCase.ORDER_CONFIRMATION
             )
           );
-          await Promise.all(aggregation.items.filter(
+          await Promise.all(response.orders.filter(
             item => {
               const setting = settings.get(item.payload.id);
               return setting?.shop_order_send_confirm_enabled;
             }
           ).map(
-            async (item, i) => {
+            async (item) => {
               const render_id = `order/confirm/${item.payload.id}`;
-              return await this.emitRenderRequest(
-                item.payload,
-                aggregation,
-                render_id,
-                'ORDER_CONFIRMATION', // TemplateUseCase.ORDER_CONFIRMATION,
-                default_templates,
-                request.subject,
-              ).then(
-                () => this.awaits_render_result.await(render_id, this.kafka_timeout)
-              ).then(
-                async (bodies) => {
-                  const setting = settings.get(item.payload.id);
-                  const title = bodies.shift();
-                  const body = bodies.join('');
-    
-                  return this.sendNotification(
-                    item.payload,
-                    body,
-                    setting,
-                    title,
-                    context,
-                  );
-                }
-              )
+              try {
+                return await this.emitRenderRequest(
+                  item.payload,
+                  aggregation,
+                  render_id,
+                  'ORDER_CONFIRMATION_EMAIL', // TemplateUseCase.ORDER_CONFIRMATION,
+                  default_templates,
+                  request.subject,
+                ).then(
+                  () => this.awaits_render_result.await(render_id, this.kafka_timeout)
+                ).then(
+                  async (bodies) => {
+                    const setting = settings.get(item.payload.id);
+                    const title = bodies.shift();
+                    const body = bodies.join('');
+      
+                    return this.sendNotification(
+                      item.payload,
+                      body,
+                      setting,
+                      title,
+                      context,
+                    );
+                  }
+                );
+              }
+              catch (error: any) {
+                return this.catchStatusError(
+                  error, item
+                );
+              }
             }
           ));
         }
@@ -1634,8 +1633,9 @@ export class OrderingService
               subject: this.tech_user ?? request.subject,
             },
             context,
-            toObjectMap(response.orders),
-            toObjectListMap(response.fulfillments),
+            response_map,
+            response.fulfillments,
+            aggregation,
           ).then(
             r => {
               r.items?.forEach(
@@ -1696,8 +1696,9 @@ export class OrderingService
               subject: this.tech_user ?? request.subject,
             },
             context,
-            toObjectMap(response.orders),
-            toObjectListMap(response.fulfillments),
+            response_map,
+            response.fulfillments,
+            aggregation,
           ).then(
             r => {
               r.items?.forEach(
@@ -1799,7 +1800,7 @@ export class OrderingService
             }
           );
   
-          await this.insecUpsert(
+          await this.superUpsert(
             OrderList.fromPartial({
               items: submits,
               total_count: submits.length,
@@ -1854,7 +1855,7 @@ export class OrderingService
                 )
               ) ?? []
               : response.fulfillments
-          ).map(
+          )?.map(
             fulfillment => fulfillment.payload?.id ?? fulfillment.status?.id 
           );
 
@@ -1862,7 +1863,7 @@ export class OrderingService
             await this.fulfillment_service?.delete(
               {
                 ids,
-                subject: this.tech_user,
+                subject: this.tech_user ?? request.subject,
               },
               context,
             ).then(
@@ -1888,33 +1889,12 @@ export class OrderingService
         }
       }
 
-      response.orders = request.items.map(item => response_map[item.id]);
+      response.orders = request.items?.map(item => response_map[item.id]);
       return response;
     }
     catch (e: any) {
       return this.catchOperationError(e);
     }
-  }
-
-  @resolves_subject()
-  @access_controlled_function({
-    action: AuthZAction.EXECUTE,
-    operation: Operation.isAllowed,
-    context: OrderingService?.ACSContextFactory,
-    resource: DefaultResourceFactory('execution.withdrawOrder'),
-    database: 'arangoDB',
-    useCache: true,
-  })
-  public withdraw(
-    request: OrderIdList,
-    context?: any
-  ): Promise<OrderListResponse> {
-    return this.updateState(
-      request.ids ?? [],
-      OrderState.WITHDRAWN,
-      request.subject,
-      context,
-    );
   }
 
   @resolves_subject()
@@ -1928,11 +1908,34 @@ export class OrderingService
   })
   public cancel(
     request: OrderIdList,
-    context?: any
+    context?: CallContext
+  ): Promise<OrderListResponse> {
+    const response = this.updateState(
+      request.ids ?? [],
+      OrderState.CANCELLED,
+      request.subject,
+      context,
+    );
+
+    return response;
+  }
+
+  @resolves_subject()
+  @access_controlled_function({
+    action: AuthZAction.EXECUTE,
+    operation: Operation.isAllowed,
+    context: OrderingService?.ACSContextFactory,
+    resource: DefaultResourceFactory('execution.withdrawOrder'),
+    database: 'arangoDB',
+    useCache: true,
+  })
+  public withdraw(
+    request: OrderIdList,
+    context?: CallContext,
   ): Promise<OrderListResponse> {
     return this.updateState(
       request.ids ?? [],
-      OrderState.CANCELLED,
+      OrderState.WITHDRAWN,
       request.subject,
       context,
     );
@@ -1956,7 +1959,7 @@ export class OrderingService
 
   private async getFulfillmentSolution(
     request: FulfillmentRequestList,
-    context?: any,
+    context?: CallContext,
     orders?: OrderMap,
     aggregation?: AggregatedOrderListResponse,
   ): Promise<FulfillmentSolutionListResponse> {
@@ -1971,7 +1974,7 @@ export class OrderingService
       (a, b) => {
         a[b.order_id] = {
           reference: {
-            instance_type: this.instanceType,
+            instance_type: this.instance_type,
             instance_id: b.order_id,
           }
         };
@@ -2040,7 +2043,7 @@ export class OrderingService
 
         const query: FulfillmentSolutionQuery = {
           reference: {
-            instance_type: this.instanceType,
+            instance_type: this.instance_type,
             instance_id: order.payload.id,
           },
           recipient: order.payload?.shipping_address,
@@ -2092,7 +2095,7 @@ export class OrderingService
   })
   public async queryFulfillmentSolution(
     request: FulfillmentRequestList,
-    context?: any,
+    context?: CallContext,
   ): Promise<FulfillmentSolutionListResponse> {
     try {
       return await this.getFulfillmentSolution(request, context);
@@ -2104,8 +2107,9 @@ export class OrderingService
 
   private async toFulfillmentResponsePrototypes(
     request: FulfillmentRequestList,
-    context?: any,
+    context?: CallContext,
     orders?: OrderMap,
+    aggregation?: AggregatedOrderListResponse,
   ): Promise<FulfillmentResponse[]> {
     orders ??= await this.getOrderMap(
       request.items?.map(item => item.order_id),
@@ -2117,6 +2121,7 @@ export class OrderingService
       request,
       context,
       orders,
+      aggregation,
     ).then(
       response => {
         if (response.operation_status?.code === 200) {
@@ -2134,7 +2139,6 @@ export class OrderingService
       }
     );
 
-    this.logger.debug('Solutions:', solutions);
     return request.items?.map(
       item => {
         const order = orders[item.order_id!];
@@ -2154,7 +2158,7 @@ export class OrderingService
                 customer_id: order.payload.customer_id,
                 user_id: order.payload.user_id,
                 references: [{
-                  instance_type: this.instanceType,
+                  instance_type: this.instance_type,
                   instance_id: item.order_id,
                 }],
                 packaging: {
@@ -2167,6 +2171,9 @@ export class OrderingService
                   recipient: order.payload?.shipping_address,
                 } as Packaging,
                 total_amounts: solution.solutions[0].amounts,
+                meta: {
+                  owners: order.payload?.meta?.owners
+                }
               } : undefined,
           status: {
             ...status,
@@ -2181,8 +2188,9 @@ export class OrderingService
 
   private async _evaluateFulfillment(
     request: FulfillmentRequestList,
-    context?: any,
+    context?: CallContext,
     orders?: OrderMap,
+    aggregation?: AggregatedOrderListResponse,
   ): Promise<FulfillmentListResponse> {
     try {
       if (!request.items?.length) {
@@ -2202,6 +2210,7 @@ export class OrderingService
         request,
         context,
         orders,
+        aggregation,
       );
 
       const invalids = prototypes.filter(
@@ -2210,22 +2219,13 @@ export class OrderingService
 
       const valids = prototypes.filter(
         item => item.status?.code === 200
-      ).map(
-        item => {
-          item.payload.meta ??= {};
-          if (!item.payload.meta.owners?.length) {
-            const order = orders[item.status.id];
-            item.payload.meta.owners = order.payload?.meta?.owners;
-          }
-          return item;
-        }
       );
       
       const evaluated = valids.length ? await this.fulfillment_service.evaluate(
         {
           items: valids.map(item => item.payload),
           total_count: valids.length,
-          subject: this.tech_user ?? request.subject,
+          subject: request.subject,
         },
         context
       ).then(
@@ -2269,8 +2269,9 @@ export class OrderingService
 
   private async _createFulfillment(
     request: FulfillmentRequestList,
-    context?: any,
+    context?: CallContext,
     orders?: OrderMap,
+    aggregation?: AggregatedOrderListResponse,
   ): Promise<FulfillmentListResponse> {
     try {
       if (!request.items?.length) {
@@ -2290,6 +2291,7 @@ export class OrderingService
         request,
         context,
         orders,
+        aggregation,
       );
 
       const invalids = prototypes.filter(
@@ -2298,16 +2300,6 @@ export class OrderingService
 
       const valids = prototypes.filter(
         item => item.status?.code === 200
-      ).map(
-        item => {
-          item.payload.meta ??= {};
-          if (!item.payload.meta.owners?.length) {
-            const order_id = item.payload?.references?.[0]?.instance_id;
-            const order = orders[order_id];
-            item.payload.meta.owners = order.payload?.meta?.owners;
-          }
-          return item;
-        }
       );
 
       const created = valids.length ? await this.fulfillment_service.create(
@@ -2368,7 +2360,7 @@ export class OrderingService
   })
   public async evaluateFulfillment(
     request: OrderList,
-    context?: any
+    context?: CallContext
   ): Promise<FulfillmentListResponse> {
     if (!request.items?.length) {
       return {
@@ -2406,7 +2398,7 @@ export class OrderingService
   })
   public async createFulfillment(
     request: FulfillmentRequestList,
-    context?: any
+    context?: CallContext
   ): Promise<FulfillmentListResponse> {
     return this._createFulfillment(request, context);
   }
@@ -2422,7 +2414,7 @@ export class OrderingService
   })
   public async triggerFulfillment(
     request: FulfillmentRequestList,
-    context?: any
+    context?: CallContext
   ): Promise<StatusListResponse> {
     try {
       const prototypes = await this.toFulfillmentResponsePrototypes(
@@ -2443,9 +2435,9 @@ export class OrderingService
         }
       );
 
-      this.logger.debug('Emit Fulfillment request', { fulfillmentList });
+      this.logger?.debug('Emit Fulfillment request', { fulfillmentList });
       await this.orderingTopic.emit(this.emitters['CREATE_FULFILLMENT'] ?? CREATE_FULFILLMENT, fulfillmentList);
-      this.logger.info('Fulfillment request emitted successfully', { fulfillmentList });
+      this.logger?.info('Fulfillment request emitted successfully', { fulfillmentList });
 
       return {
         status: prototypes?.map(item => item.status),
@@ -2459,9 +2451,10 @@ export class OrderingService
 
   private async toInvoiceResponsePrototypes(
     request: OrderingInvoiceRequestList,
-    context?: any,
+    context?: CallContext,
     order_map?: OrderMap,
-    fulfillment_map?: FulfillmentMap,
+    fulfillments?: FulfillmentResponse[],
+    aggregation?: AggregatedOrderListResponse,
   ): Promise<InvoiceResponse[]> {
     order_map ??= await this.getOrderMap(
       request.items?.flatMap(
@@ -2473,7 +2466,13 @@ export class OrderingService
       context,
     );
 
-    fulfillment_map ??= await this.getFulfillmentMap(
+    aggregation ??= await this.aggregate(
+      { items: Object.values(order_map) },
+      request.subject,
+      context,
+    );
+
+    const fulfillment_map = await this.getFulfillmentMap(
       request.items?.flatMap(
         item => item.sections?.map(
           section => section.order_id
@@ -2481,6 +2480,7 @@ export class OrderingService
       ),
       request.subject,
       context,
+      fulfillments,
     );
 
     return request.items?.map(
@@ -2498,7 +2498,7 @@ export class OrderingService
         }
 
         for (const section of item.sections!) {
-          const order = order_map[section.order_id!];
+          const order = order_map[section.order_id];
 
           if (order?.status?.code !== 200) {
             return {
@@ -2526,6 +2526,70 @@ export class OrderingService
           }
         }
 
+        const sections = item.sections?.map(
+          section => {
+            const order = order_map[section.order_id];
+            const product_items = (
+              section.selected_items?.length
+                ? order.payload?.items?.filter(
+                  item => item.id! in section.selected_items!
+                ) ?? []
+                : order.payload?.items ?? []
+            ).map(
+              (item, i): Position => ({
+                id: (i + 1).toString().padStart(3, '0'),
+                unit_price: item.unit_price,
+                quantity: item.quantity,
+                amount: item.amount,
+                product_item: {
+                  product_id: item.product_id,
+                  variant_id: item.variant_id,
+                },
+                attributes: [],
+              })
+            );
+            const fulfillment_items: Position[] = (
+              section.fulfillment_mode === FulfillmentInvoiceMode.INCLUDE ? (
+                section.selected_fulfillments?.flatMap(
+                  selection => fulfillment_map[section?.order_id]?.find(
+                    fulfillment => fulfillment.payload?.id === selection?.fulfillment_id
+                  )?.payload?.packaging?.parcels?.filter(
+                    parcel => !selection?.selected_parcels?.length
+                      || selection.selected_parcels.includes(parcel.id)
+                  )
+                ) ?? fulfillment_map[section.order_id]?.flatMap(
+                  fulfillment => fulfillment.payload?.packaging?.parcels
+                ) ?? []
+              ) : []
+            ).map(
+              (a, i): Position => ({
+                id: (i + product_items.length + 1).toString().padStart(3, '0'),
+                unit_price: a?.price,
+                quantity: 1,
+                amount: a?.amount,
+                fulfillment_item: {
+                  product_id: a?.product_id,
+                  variant_id: a?.variant_id,
+                },
+              })
+            );
+
+            const positions = [
+              ...product_items,
+              ...fulfillment_items,
+            ];
+            return {
+              id: section.order_id,
+              amounts: calcTotalAmounts(
+                positions.map(p => p.amount),
+                aggregation.currencies,
+              ),
+              customer_remark: order.payload?.customer_remark,
+              positions,
+            } as Section;
+          }
+        );
+
         return {
           payload: {
             invoice_number: item.invoice_number,
@@ -2534,109 +2598,20 @@ export class OrderingService
             shop_id: master.payload?.shop_id,
             references: item.sections?.map(
               section => ({
-                instance_type: this.instanceType,
+                instance_type: this.instance_type,
                 instance_id: section.order_id,
               })
             ),
             customer_remark: master.payload?.customer_remark,
             recipient: master.payload?.billing_address,
-            total_amounts: master.payload?.total_amounts,
-            sections: item.sections?.map(
-              section => {
-                const order = order_map[section.order_id!];
-                const product_items = (
-                  section.selected_items?.length
-                    ? order.payload?.items?.filter(
-                      item => item.id! in section.selected_items!
-                    ) ?? []
-                    : order.payload?.items ?? []
-                ).map(
-                  (item, i): Position => ({
-                    id: (i + 1).toString().padStart(3, '0'),
-                    unit_price: item.unit_price,
-                    quantity: item.quantity,
-                    amount: item.amount,
-                    product_item: {
-                      product_id: item.product_id,
-                      variant_id: item.variant_id,
-                    },
-                    attributes: [],
-                  })
-                );
-
-                const fulfillment_items: Parcel[] = Object.values((
-                  section.fulfillment_mode === FulfillmentInvoiceMode.INCLUDE && (
-                    section.selected_fulfillments?.flatMap(
-                      selection => fulfillment_map[section?.order_id]?.find(
-                        fulfillment => fulfillment.payload?.id === selection?.fulfillment_id
-                      )?.payload?.packaging?.parcels?.filter(
-                        parcel =>
-                          selection?.selected_parcels?.length === 0 ||
-                          parcel.id in selection.selected_parcels
-                      )
-                    ) ?? fulfillment_map[section.order_id]?.flatMap(
-                      fulfillment => fulfillment.payload?.packaging?.parcels
-                    )
-                  ) || []
-                ).reduce(
-                  (a, b, i) => {
-                    const id = `${b?.product_id}___${b?.variant_id}`;
-                    const c = a[id];
-                    if (c) {
-                      c.quantity += 1;
-                      c.amount.gross += b?.amount?.gross;
-                      c.amount.net += b?.amount?.net;
-                      c.amount.vats.push(...(b?.amount?.vats ?? []));
-                    }
-                    else {
-                      a[id] = {
-                        id: (i + product_items.length + 1).toString().padStart(3, '0'),
-                        unit_price: b?.price,
-                        quantity: 1,
-                        amount: b?.amount,
-                        fulfillment_item: {
-                          product_id: b?.product_id,
-                          variant_id: b?.variant_id,
-                        },
-                        attributes: [],
-                      };
-                    }
-                    return a;
-                  },
-                  {} as PositionMap
-                ));
-
-                fulfillment_items.forEach(
-                  item => {
-                    item!.amount!.vats = Object.values(
-                      item.amount?.vats?.reduce(
-                        (a, b) => {
-                          const c = a[b.tax_id!];
-                          if (c) {
-                            c.vat! += b.vat!;
-                          }
-                          else {
-                            a[b.tax_id!] = { ...b };
-                          }
-                          return a;
-                        },
-                        {} as VATMap
-                      ) ?? {}
-                    );
-                  }
-                );
-
-                return {
-                  id: section.order_id,
-                  amounts: order.payload?.total_amounts,
-                  customer_remark: order.payload?.customer_remark,
-                  positions: [
-                    ...product_items,
-                    ...fulfillment_items,
-                  ],
-                } as Section;
-              }
-            )
+            total_amounts: calcTotalAmounts(
+              sections.flatMap(s => s.amounts),
+              aggregation.currencies,
+            ),
+            sections,
+            meta: {
+              owners: master.payload?.meta?.owners
+            }
           },
           status: createStatusCode(
             master.payload?.id,
@@ -2650,11 +2625,12 @@ export class OrderingService
   }
 
   private async doInvoice(
-    action: (request: InvoiceList, context?: any) => Promise<InvoiceListResponse>,
+    action: (request: InvoiceList, context?: CallContext) => Promise<InvoiceListResponse>,
     request: OrderingInvoiceRequestList,
-    context?: any,
+    context?: CallContext,
     order_map?: OrderMap,
-    fulfillment_map?: FulfillmentMap,
+    fulfillments?: FulfillmentResponse[],
+    aggregation?: AggregatedOrderListResponse,
   ): Promise<InvoiceListResponse> {
     try {
       if (!request.items?.length) {
@@ -2667,7 +2643,8 @@ export class OrderingService
         request,
         context,
         order_map,
-        fulfillment_map,
+        fulfillments,
+        aggregation,
       );
       const invalids = prototypes.filter(
         proto => proto.status?.code !== 200
@@ -2716,31 +2693,35 @@ export class OrderingService
 
   private async _createInvoice(
     request: OrderingInvoiceRequestList,
-    context?: any,
+    context?: CallContext,
     order_map?: OrderMap,
-    fulfillment_map?: FulfillmentMap,
+    fulfillments?: FulfillmentResponse[],
+    aggregation?: AggregatedOrderListResponse,
   ): Promise<InvoiceListResponse> {
     return this.doInvoice(
       this.invoice_service.create,
       request,
       context,
       order_map,
-      fulfillment_map,
+      fulfillments,
+      aggregation,
     );
   };
 
   private async _renderInvoice(
     request: OrderingInvoiceRequestList,
-    context?: any,
+    context?: CallContext,
     order_map?: OrderMap,
-    fulfillment_map?: FulfillmentMap,
+    fulfillments?: FulfillmentResponse[],
+    aggregation?: AggregatedOrderListResponse,
   ): Promise<InvoiceListResponse> {
     return this.doInvoice(
       this.invoice_service.render,
       request,
       context,
       order_map,
-      fulfillment_map,
+      fulfillments,
+      aggregation,
     );
   };
 
@@ -2755,7 +2736,7 @@ export class OrderingService
   })
   public async createInvoice(
     request: OrderingInvoiceRequestList,
-    context?: any,
+    context?: CallContext,
   ): Promise<InvoiceListResponse> {
     return await this._createInvoice(request, context);
   };
@@ -2771,7 +2752,7 @@ export class OrderingService
   })
   public async renderInvoice(
     request: OrderingInvoiceRequestList,
-    context?: any,
+    context?: CallContext,
   ): Promise<InvoiceListResponse> {
     return await this._renderInvoice(request, context);
   };
@@ -2787,7 +2768,7 @@ export class OrderingService
   })
   public async triggerInvoice(
     request: OrderingInvoiceRequestList,
-    context?: any,
+    context?: CallContext,
   ): Promise<StatusListResponse> {
     try {
       if (!request.items?.length) {
@@ -2814,9 +2795,9 @@ export class OrderingService
         }
       );
 
-      this.logger.debug('Emit Invoice Request', { invoiceList });
+      this.logger?.debug('Emit Invoice Request', { invoiceList });
       await this.orderingTopic.emit(this.emitters['CREATE_INVOICE'] ?? CREATE_INVOICE, invoiceList);
-      this.logger.info('Fulfillment request emitted successfully', { invoiceList });
+      this.logger?.info('Fulfillment request emitted successfully', { invoiceList });
 
       return {
         status: prototypes?.map(item => item.status),
@@ -2922,15 +2903,14 @@ export class OrderingService
       ...(setting?.customer_locales ?? []),
       ...(setting?.shop_locales ?? []),
     ];
-    const templates = shop.template_ids?.map(
-      id => aggregation.templates?.get(id)
-    ).filter(
+    const templates = aggregation.templates?.getMany(
+      shop.template_ids
+    )?.filter(
       template => template.use_case === use_case
     ).sort(
       (a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0)
     ) ?? [];
-
-    if (templates.length === 0 && default_templates.length > 0) {
+    if (templates.length === 0 && default_templates?.length > 0) {
       templates.push(...default_templates);
     }
     else {
@@ -2964,10 +2944,7 @@ export class OrderingService
     const payloads: Payload[] = templates.map(
       (template, i) => ({
         content_type: 'text/html',
-        data: packRenderData(
-          aggregation,
-          item,
-        ),
+        data: marshallProtobufAny(item),
         templates: marshallProtobufAny({
           [i]: {
             body: bodies[i],
@@ -2993,7 +2970,7 @@ export class OrderingService
 
   public async handleRenderResponse(
     response: RenderResponse,
-    context?: any,
+    context?: CallContext,
   ) {
     try {
       const [entity] = response.id.split('/');
@@ -3032,7 +3009,7 @@ export class OrderingService
     body: string,
     setting: ResolvedSetting,
     title?: string,
-    context?: any,
+    context?: CallContext,
   ) {
     const status = await this.notification_service.send(
       {

@@ -27,8 +27,8 @@ export type ResolverParams<T = any, M = ResolverMap<T>> = [string, Map<string, T
 export type ArrayResolverParams<T = any, M = ResolverMap<T>> = [string, Map<string, T>, M[]?, T[]?];
 export type ElementOf<T = any> = T extends Array<infer E> ? E : T;
 export type ResolverMap<T = any> = {
-  [K in keyof T]?: ResolverParams<T[K]> & ArrayResolverParams<T[K]> & T[K]
-};
+  [K in keyof T]?: ResolverParams<T[K]> | ArrayResolverParams<T[K]> | T[K]
+} & {};
 export type ResolvedNode<T, M> = T extends ResolverParams
   ? (
     T[2] extends object
@@ -39,12 +39,12 @@ export type ResolvedNode<T, M> = T extends ResolverParams
   ? Resolved<T & M, M>
   : T;
 export type Resolved<T extends ResolverMap, M extends ResolverMap> = {
-  [K in keyof T]?: T[K] extends object 
+  [K in keyof T]?: T[K] extends object
     ? ResolvedNode<T[K], M[K]>
     : T[K]
 };
 
-export const Resolver = <T = any, M = ResolverMap<T>>(
+export const Resolver = <T, M>(
   search_key: string,
   source: Map<string, T>,
   map?: M,
@@ -55,7 +55,7 @@ export const Resolver = <T = any, M = ResolverMap<T>>(
   {} as T,
 ];
 
-export const ArrayResolver = <T = any, M = ResolverMap<T[]>>(
+export const ArrayResolver = <T, M>(
   search_key: string,
   source: Map<string, T>,
   map?: M,
@@ -111,7 +111,7 @@ export class ResourceAggregator {
     return map;
   }
 
-  public async aggregate<T extends ResourceListResponse | ResourceList, C>(
+  public async aggregate<T extends object, C>(
     target: T,
     sources: {
       service: CRUDServiceDefinition;

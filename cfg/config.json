@@ -204,6 +204,14 @@
       "fullName": "io.restorecommerce.manufacturer.ManufacturerService",
       "address": "localhost:50068"
     },
+    "category": {
+      "fullName": "io.restorecommerce.product_category.ProductCategoryService",
+      "address": "localhost:50068"
+    },
+    "prototype": {
+      "fullName": "io.restorecommerce.product_prototype.ProductPrototypeService",
+      "address": "localhost:50068"
+    },
     "address": {
       "fullName": "io.restorecommerce.address.AddressService",
       "address": "localhost:50053"
@@ -298,6 +306,7 @@
     "enforce": true,
     "database": "arangoDB",
     "urns": {
+      "order": "urn:restorecommerce:acs:model:order:Order",
       "entity": "urn:restorecommerce:acs:names:model:entity",
       "user": "urn:restorecommerce:acs:model:user.User",
       "model": "urn:restorecommerce:acs:model",
@@ -333,6 +342,10 @@
       "db-index": 5,
       "ttl": 3600,
       "prefix": "acs:"
+    },
+    "techUser": {
+      "id": "root_tech_user",
+      "token": "1a4c6789-6435-487a-9308-64d06384acf9"
     }
   },
   "statusCodes": {
@@ -395,7 +408,7 @@
     "shipping": "shipping",
     "billing": "billing"
   },
-  "default": {
+  "defaults": {
     "Setting": {
       "shop_fulfillment_evaluate_enabled": true,
       "shop_fulfillment_create_enabled": true,
@@ -422,7 +435,7 @@
           }
         ],
         "ordinal": 0,
-        "use_case": "ORDER_CONFIRMATION"
+        "use_case": "ORDER_CONFIRMATION_EMAIL"
       },
       {
         "body": {
@@ -441,7 +454,7 @@
           }
         ],
         "ordinal": 1,
-        "use_case": "ORDER_CONFIRMATION"
+        "use_case": "ORDER_CONFIRMATION_EMAIL"
       }
     ]
   }

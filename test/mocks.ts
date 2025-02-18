@@ -121,7 +121,7 @@ const subjects: { [key: string]: Subject } = {
 const status: Status = {
   code: 200,
   message: 'OK',
-}
+};
 
 const operationStatus: OperationStatus = {
   code: 200,

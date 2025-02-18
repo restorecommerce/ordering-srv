@@ -29,6 +29,7 @@ import {
   ReadRequest,
   type ResourceList,
   type ResourceListResponse,
+  ResourceResponse,
   ServiceImplementation,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import {
@@ -141,22 +142,35 @@ export class AccessControlledServiceBase<O extends ResourceListResponse, I exten
     };
   }
 
-  /**
-   * Insecure read, bypassing ACS.
-   * Override this function to alter read behaviour.
-   * 
-   * @param request 
-   * @param context 
-   * @returns 
-   */
-  protected async insecRead(
+  protected catchStatusError<T extends ResourceResponse>(e?: any, item?: T): T {
+    item ??= {} as T;
+    item.status = {
+      id: item?.payload?.id,
+      code: Number.isInteger(e?.code) ? e.code : 500,
+      message: e?.message ?? e?.details ?? (e ? JSON.stringify(e) : 'Unknown Error!')
+    };
+    this.logger?.warn(e?.stack, item);
+    return item;
+  }
+
+  protected catchOperationError<T extends ResourceListResponse>(e?: any, response?: T): T {
+    response ??= {} as T;
+    response.operation_status = {
+      code: Number.isInteger(e?.code) ? e.code : 500,
+      message: e?.message ?? e?.details ?? (e ? JSON.stringify(e) : 'Unknown Error!'),
+    };
+    this.logger?.error(e?.stack, response);
+    return response;
+  }
+
+  protected async superRead(
     request: ReadRequest,
     context?: CallContext,
   ): Promise<DeepPartial<O>> {
     return await super.read(request, context);
   }
 
-  protected async insecCreate(
+  protected async superCreate(
     request: I,
     context?: CallContext,
   ): Promise<DeepPartial<O>> {
@@ -166,7 +180,7 @@ export class AccessControlledServiceBase<O extends ResourceListResponse, I exten
     );
   }
 
-  protected async insecUpdate(
+  protected async superUpdate(
     request: I,
     context?: CallContext,
   ): Promise<DeepPartial<O>> {
@@ -176,7 +190,7 @@ export class AccessControlledServiceBase<O extends ResourceListResponse, I exten
     );
   }
 
-  protected async insecUpsert(
+  protected async superUpsert(
     request: I,
     context?: CallContext,
   ): Promise<DeepPartial<O>> {
@@ -186,7 +200,7 @@ export class AccessControlledServiceBase<O extends ResourceListResponse, I exten
     );
   }
 
-  protected async insecDelete(
+  protected async superDelete(
     request: DeleteRequest,
     context?: CallContext,
   ): Promise<DeleteResponse> {
@@ -200,6 +214,7 @@ export class AccessControlledServiceBase<O extends ResourceListResponse, I exten
     ids: string[],
     subject?: Subject,
     context?: CallContext,
+    bypassACS = false,
   ): Promise<DeepPartial<O>> {
     ids = [...new Set(ids)].filter(id => id);
     if (ids.length > 1000) {
@@ -225,7 +240,12 @@ export class AccessControlledServiceBase<O extends ResourceListResponse, I exten
       }],
       subject
     });
-    return await this.insecRead(request, context);
+    if (bypassACS) {
+      return await this.superRead(request, context);
+    }
+    else {
+      return await this.read(request, context);
+    }
   }
 
   @resolves_subject()
@@ -242,7 +262,7 @@ export class AccessControlledServiceBase<O extends ResourceListResponse, I exten
     request: I,
     context?: CallContext
   ): Promise<DeepPartial<O>> {
-    return await this.insecCreate(request, context);
+    return await this.superCreate(request, context);
   }
 
   @access_controlled_function({
@@ -257,7 +277,7 @@ export class AccessControlledServiceBase<O extends ResourceListResponse, I exten
     request: ReadRequest,
     context?: CallContext,
   ): Promise<DeepPartial<O>> {
-    return await this.insecRead(request, context);
+    return await this.superRead(request, context);
   }
 
   @resolves_subject()
@@ -274,7 +294,7 @@ export class AccessControlledServiceBase<O extends ResourceListResponse, I exten
     request: I,
     context?: CallContext,
   ): Promise<DeepPartial<O>> {
-    return await this.insecUpdate(request, context);
+    return await this.superUpdate(request, context);
   }
 
   @resolves_subject()
@@ -291,7 +311,7 @@ export class AccessControlledServiceBase<O extends ResourceListResponse, I exten
     request: I,
     context?: CallContext,
   ): Promise<DeepPartial<O>> {
-    return await this.insecUpsert(request, context);
+    return await this.superUpsert(request, context);
   }
 
   @resolves_subject()
@@ -307,6 +327,6 @@ export class AccessControlledServiceBase<O extends ResourceListResponse, I exten
     request: DeleteRequest,
     context?: CallContext,
   ): Promise<DeleteResponse> {
-    return this.insecDelete(request, context);
+    return this.superDelete(request, context);
   }
 }
