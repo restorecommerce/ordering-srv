@@ -1722,17 +1722,6 @@ export class OrderingService
             }
           );
         }
-  
-        Object.values(response_map).forEach(
-          item => {
-            if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
-              this.orderingTopic.emit(this.emitters['INVALID'], item);
-            }
-            else if (item.payload?.order_state in this.emitters) {
-              this.orderingTopic.emit(this.emitters[item.payload.order_state], item.payload);
-            }
-          }
-        );
 
         if (this.notification_service) {
           this.logger?.debug('Send notifications on submit...');
@@ -1783,6 +1772,17 @@ export class OrderingService
             }
           ));
         }
+
+        await Promise.all(Object.values(response_map).map(
+          async item => {
+            if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
+              await this.orderingTopic.emit(this.emitters['INVALID'], item);
+            }
+            else if (item.payload?.order_state in this.emitters) {
+              await this.orderingTopic.emit(this.emitters[item.payload.order_state], item.payload);
+            }
+          }
+        ));
       }
       catch (error: any) {
         response.operation_status = this.catchOperationError(error)?.operation_status;

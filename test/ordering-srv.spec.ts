@@ -216,7 +216,7 @@ describe('The Ordering Service:', () => {
 
   for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
     it(`should submit valid orders by sample: ${sample_name}`, async function() {
-      this.timeout(5000);
+      this.timeout(30000);
       const response = await client.submit(sample);
       should.equal(
         response.operationStatus?.code,
