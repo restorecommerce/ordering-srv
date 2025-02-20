@@ -296,7 +296,7 @@ export class OrderingService
   protected readonly awaits_render_result = new ResourceAwaitQueue<string[]>;
   protected readonly default_setting: ResolvedSetting;
   protected readonly default_templates: Template[] = [];
-  protected readonly kafka_timeout = 10000;
+  protected readonly kafka_timeout = 15000;
   protected readonly contact_point_type_ids = {
     legal: 'legal',
     shipping: 'shipping',
@@ -1408,16 +1408,15 @@ export class OrderingService
       try {
         if (this.fulfillment_service) {
           this.logger?.debug('Evaluate fulfillment on submit...');
-          response.fulfillments = await this._evaluateFulfillment(
+          response.fulfillments = [];
+          const fulfillment_map: Record<string, FulfillmentResponse> = {};
+          await this._evaluateFulfillment(
             {
               items: response.orders?.filter(
                 item => {
                   const setting = settings.get(item.payload?.id);
                   return item.status?.code === 200
-                    && (
-                      setting?.shop_fulfillment_create_enabled
-                      || setting?.shop_fulfillment_evaluate_enabled
-                    );
+                    && setting?.shop_fulfillment_evaluate_enabled
                 }
               ).map(item => ({
                 order_id: item.payload.id,
@@ -1437,13 +1436,13 @@ export class OrderingService
                   if (order && fulfillment.status?.code !== 200) {
                     order.status = fulfillment.status;
                   }
+                  fulfillment_map[id] =fulfillment;
                 }
               );
 
               if (r.operation_status?.code !== 200) {
                 throw r.operation_status;
               }
-              return r.items;
             }
           ).catch(
             error => {
@@ -1455,21 +1454,27 @@ export class OrderingService
               }
               throw error;
             }
+          ).finally(
+            () => response.fulfillments.push(...Object.values(fulfillment_map))
           );
           
           this.logger?.debug('Create fulfillment on submit...');
-          await this.fulfillment_service.create(
+          await this._createFulfillment(
             {
-              items: response.fulfillments?.filter(
+              items: response.orders?.filter(
                 item => {
-                  const setting = settings.get(item.payload?.references?.[0]?.instance_id);
+                  const setting = settings.get(item.payload?.id);
                   return item.status?.code === 200
-                    && setting?.shop_fulfillment_create_enabled;
+                    && setting.shop_fulfillment_create_enabled;
                 }
-              ).map(item => item.payload),
+              ).map(item => ({
+                order_id: item.payload.id,
+              })),
               subject: this.tech_user ?? request.subject,
             },
             context,
+            response_map,
+            aggregation,
           ).then(
             r => {
               r.items?.forEach(
@@ -1479,6 +1484,7 @@ export class OrderingService
                   if (order && fulfillment.status?.code !== 200) {
                     order.status = fulfillment.status;
                   }
+                  fulfillment_map[id] = fulfillment;
                 }
               );
 
@@ -1497,12 +1503,15 @@ export class OrderingService
               }
               throw error;
             }
+          ).finally(
+            () => response.fulfillments.push(...Object.values(fulfillment_map))
           );
         }
 
         if (this.invoice_service) {
           this.logger?.debug('Create invoices on submit...');
-          const created_invoices = await this._createInvoice(
+          response.invoices = [];
+          await this._createInvoice(
             {
               items: response.orders?.filter(
                 item => {
@@ -1530,21 +1539,24 @@ export class OrderingService
             aggregation,
           ).then(
             r => {
-              r.items?.forEach(
-                invoice => {
-                  invoice.payload?.references?.forEach(
-                    reference => {
-                      const order = response_map[reference?.instance_id];
-                      if (invoice.status?.code !== 200 && order) {
-                        order.status = {
-                          ...invoice.status,
-                          id: order.payload?.id ?? order.status?.id,
-                        };
+              if (r.items) {
+                r.items.forEach(
+                  invoice => {
+                    invoice.payload?.references?.forEach(
+                      reference => {
+                        const order = response_map[reference?.instance_id];
+                        if (invoice.status?.code !== 200 && order) {
+                          order.status = {
+                            ...invoice.status,
+                            id: order.payload?.id ?? order.status?.id,
+                          };
+                        }
                       }
-                    }
-                  );
-                }
-              );
+                    );
+                  }
+                );
+                response.invoices.push(...r.items);
+              }
 
               if (r.operation_status?.code !== 200) {
                 throw r.operation_status;
@@ -1593,21 +1605,24 @@ export class OrderingService
             aggregation,
           ).then(
             r => {
-              r.items?.forEach(
-                invoice => {
-                  invoice.payload?.references?.forEach(
-                    reference => {
-                      const order = response_map[reference?.instance_id];
-                      if (invoice.status?.code !== 200 && order) {
-                        order.status = {
-                          ...invoice.status,
-                          id: order.payload?.id ?? order.status?.id,
-                        };
+              if (r.items) {
+                r.items.forEach(
+                  invoice => {
+                    invoice.payload?.references?.forEach(
+                      reference => {
+                        const order = response_map[reference?.instance_id];
+                        if (invoice.status?.code !== 200 && order) {
+                          order.status = {
+                            ...invoice.status,
+                            id: order.payload?.id ?? order.status?.id,
+                          };
+                        }
                       }
-                    }
-                  );
-                }
-              );
+                    );
+                  }
+                );
+                response.invoices.push(...r.items);
+              }
 
               if (r.operation_status?.code !== 200) {
                 throw r.operation_status;
@@ -1624,15 +1639,6 @@ export class OrderingService
               }
               throw error;
             }
-          );
-
-          response.invoices = [
-            created_invoices,
-            rendered_invoices,
-          ].flatMap(
-            list => list
-          ).filter(
-            item => item
           );
 
           this.logger?.debug('Send invoices on submit...');
@@ -1741,10 +1747,10 @@ export class OrderingService
               return setting?.shop_order_send_confirm_enabled;
             }
           ).map(
-            async (item) => {
+            item => {
               const render_id = `order/confirm/${item.payload.id}`;
               try {
-                return await this.emitRenderRequest(
+                return this.emitRenderRequest(
                   item.payload,
                   aggregation,
                   render_id,
@@ -2117,7 +2123,11 @@ export class OrderingService
                 } as Packaging,
                 total_amounts: solution.solutions[0].amounts,
                 meta: {
-                  owners: order.payload?.meta?.owners
+                  created: new Date(),
+                  modified: new Date(),
+                  created_by: request.subject?.id,
+                  modified_by: request.subject?.id,
+                  owners: order.payload.meta.owners,
                 }
               } : undefined,
           status: {
@@ -2566,7 +2576,11 @@ export class OrderingService
               ),
               sections,
               meta: {
-                owners: master.payload.meta.owners
+                created: new Date(),
+                modified: new Date(),
+                created_by: request.subject?.id,
+                modified_by: request.subject?.id,
+                owners: master.payload.meta.owners,
               }
             },
             status: createStatusCode(
