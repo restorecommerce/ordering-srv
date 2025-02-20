@@ -354,6 +354,7 @@ export class OrderingService
     
     this.emitters = cfg.get('events:emitters');
     this.tech_user = cfg.get('authorization:techUser');
+    this.kafka_timeout = cfg.get('events:kafka:timeout') ?? 5000;
 
     // optional Fulfillment
     const fulfillment_cfg = cfg.get('client:fulfillment');

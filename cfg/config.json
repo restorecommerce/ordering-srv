@@ -67,6 +67,7 @@
         ]
       },
       "latestOffset": true,
+      "timeout": 15000,
       "orderCreated": {
         "messageObject": "io.restorecommerce.order.Order"
       },
