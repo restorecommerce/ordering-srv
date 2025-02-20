@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import { parse as CSV } from 'csv-parse/sync';
 import { type CallContext } from 'nice-grpc-common';
@@ -140,8 +141,6 @@ import {
   Pipe,
 } from './experimental/index.js';
 import {
-  BigAmount,
-  BigVAT,
   DefaultUrns,
   FulfillmentMap,
   FulfillmentSolutionMap,
@@ -150,7 +149,6 @@ import {
   ProductVariant,
   RatioedTax,
   toObjectMap,
-  // toObjectListMap,
   parseSetting,
   ResolvedSetting,
   DefaultSetting,
@@ -161,10 +159,10 @@ import {
   createOperationStatusCode,
   createStatusCode,
   throwStatusCode,
-  resolveOrder,
   OrderMap,
   calcAmount,
   calcTotalAmounts,
+  packRenderData,
 } from './utils.js';
 
 
@@ -197,47 +195,42 @@ export class OrderingService
   private readonly urns = DefaultUrns;
   private readonly status_codes = {
     OK: {
-      id: '',
       code: 200,
       message: 'OK',
     },
     ITEM_NOT_FOUND: {
-      id: '',
       code: 404,
       message: '{entity} {id} not found!',
     },
     NO_LEGAL_ADDRESS: {
-      id: '',
       code: 404,
       message: '{entity} {id} has no legal address!',
     },
     NO_SHIPPING_ADDRESS: {
-      id: '',
       code: 404,
       message: '{entity} {id} has no shipping address!',
     },
     NOT_SUBMITTED: {
-      id: '',
       code: 400,
       message: '{entity} {id} expected to be submitted!',
     },
     NO_ITEM: {
-      id: '',
       code: 400,
       message: '{entity} {id} has no item in query',
     },
+    NO_AMOUNT: {
+      code: 400,
+      message: '{entity} {id} amount is missing',
+    },
     NO_PHYSICAL_ITEM: {
-      id: '',
       code: 207,
       message: '{entity} {id} includes no physical item!',
     },
     IN_HOMOGEN_INVOICE: {
-      id: '',
       code: 400,
       message: '{entity} {id} must have identical customer_id and shop_id to master {entity}!',
     },
     SOLUTION_NOT_FOUND: {
-      id: '',
       code: 404,
       message: 'Solution for {entity} {id} not found!',
     },
@@ -303,7 +296,7 @@ export class OrderingService
   protected readonly awaits_render_result = new ResourceAwaitQueue<string[]>;
   protected readonly default_setting: ResolvedSetting;
   protected readonly default_templates: Template[] = [];
-  protected readonly kafka_timeout = 5000;
+  protected readonly kafka_timeout = 10000;
   protected readonly contact_point_type_ids = {
     legal: 'legal',
     shipping: 'shipping',
@@ -1051,18 +1044,18 @@ export class OrderingService
           )
         };
 
+        if (!order.payload.shipping_address) {
+          throwStatusCode(
+            order?.payload.id,
+            'Order',
+            this.status_codes.NO_SHIPPING_ADDRESS,
+            order?.payload.id,
+          );
+        }
+
         if (order.payload.items?.length) {
           await Promise.all(order.payload.items?.map(
             async (item) => {
-              if (!order.payload.shipping_address) {
-                throwStatusCode(
-                  order?.payload.id,
-                  'Order',
-                  this.status_codes.NO_SHIPPING_ADDRESS,
-                  order?.payload.id,
-                );
-              }
-
               const product = aggregation.products.get(item.product_id);
               const nature = product.product?.physical ?? product.product?.virtual;
               const variant = this.mergeProductVariantRecursive(nature, item.variant_id);
@@ -1089,59 +1082,9 @@ export class OrderingService
           );
         }
 
-        order.payload.total_amounts = Object.values(order.payload.items?.reduce(
-          (amounts, item) => {
-            const amount = amounts[item.amount?.currency_id];
-            if (amount) {
-              amount.gross = amount.gross.plus(item.amount.gross!);
-              amount.net = amount.net.plus(item.amount?.net);
-              amount.vats.push(...(item.amount?.vats ?? []));
-            }
-            else {
-              amounts[item.amount.currency_id] = {
-                currency_id: item.amount.currency_id,
-                gross: new BigNumber(item.amount.gross),
-                net: new BigNumber(item.amount.net),
-                vats: [...(item.amount?.vats ?? [])],
-              };
-            }
-            return amounts;
-          },
-          {} as { [key: string]: BigAmount }
-        )).map(
-          big => ({
-            currency_id: big.currency_id,
-            gross: big.gross.decimalPlaces(2).toNumber(),
-            net: big.net.decimalPlaces(2).toNumber(),
-            vats: big.vats,
-          })
-        );
-
-        order.payload.total_amounts.forEach(
-          amount => {
-            amount.vats = Object.values(
-              amount.vats?.reduce(
-                (vats, vat) => {
-                  if (vat.tax_id! in vats) {
-                    vats[vat.tax_id!].vat = vats[vat.tax_id!]?.vat.plus(vat.vat) ?? new BigNumber(vat.vat);
-                  }
-                  else {
-                    vats[vat.tax_id!] = {
-                      tax_id: vat.tax_id,
-                      vat: new BigNumber(vat.vat)
-                    };
-                  }
-                  return vats;
-                },
-                {} as { [key: string]: BigVAT }
-              ) ?? {}
-            ).map(
-              big => ({
-                tax_id: big.tax_id,
-                vat: big.vat.decimalPlaces(2).toNumber()
-              })
-            );
-          }
+        order.payload.total_amounts = calcTotalAmounts(
+          order.payload.items.map(item => item.amount),
+          aggregation.currencies,
         );
 
         const has_shop_as_owner = order.payload.meta?.owners?.filter(
@@ -1389,7 +1332,6 @@ export class OrderingService
     request: OrderList,
     context?: CallContext
   ): Promise<OrderSubmitListResponse> {
-    this.logger?.error('CONTEXT', { context });
     try {
       await this.superRead(
         {
@@ -1458,7 +1400,7 @@ export class OrderingService
         })
       );
 
-      if (response.operation_status?.code !== 200 && response.operation_status?.code !== 207) {
+      if (response.operation_status?.code !== 200) {
         this.logger?.error('On Order Submit', response);
         return response;
       }
@@ -1472,7 +1414,10 @@ export class OrderingService
                 item => {
                   const setting = settings.get(item.payload?.id);
                   return item.status?.code === 200
-                    && setting.shop_fulfillment_evaluate_enabled;
+                    && (
+                      setting?.shop_fulfillment_create_enabled
+                      || setting?.shop_fulfillment_evaluate_enabled
+                    );
                 }
               ).map(item => ({
                 order_id: item.payload.id,
@@ -1486,7 +1431,8 @@ export class OrderingService
             r => {
               r.items?.forEach(
                 fulfillment => {
-                  const id = fulfillment.payload?.references?.[0]?.instance_id ?? fulfillment.status?.id;
+                  const id = fulfillment.payload?.references?.[0]?.instance_id
+                    ?? fulfillment.status?.id;
                   const order = response_map[id];
                   if (order && fulfillment.status?.code !== 200) {
                     order.status = fulfillment.status;
@@ -1494,7 +1440,7 @@ export class OrderingService
                 }
               );
 
-              if (r.operation_status?.code !== 200 && r.operation_status?.code !== 207) {
+              if (r.operation_status?.code !== 200) {
                 throw r.operation_status;
               }
               return r.items;
@@ -1512,22 +1458,18 @@ export class OrderingService
           );
           
           this.logger?.debug('Create fulfillment on submit...');
-          response.fulfillments = await this._createFulfillment(
+          await this.fulfillment_service.create(
             {
-              items: response.orders?.filter(
+              items: response.fulfillments?.filter(
                 item => {
-                  const setting = settings.get(item.payload?.id);
+                  const setting = settings.get(item.payload?.references?.[0]?.instance_id);
                   return item.status?.code === 200
-                    && setting.shop_fulfillment_create_enabled;
+                    && setting?.shop_fulfillment_create_enabled;
                 }
-              ).map(item => ({
-                order_id: item.payload.id,
-              })),
+              ).map(item => item.payload),
               subject: this.tech_user ?? request.subject,
             },
             context,
-            response_map,
-            aggregation,
           ).then(
             r => {
               r.items?.forEach(
@@ -1540,7 +1482,7 @@ export class OrderingService
                 }
               );
 
-              if (r.operation_status?.code !== 200 && r.operation_status?.code !== 207) {
+              if (r.operation_status?.code !== 200) {
                 throw r.operation_status;
               }
               return r.items;
@@ -1556,56 +1498,6 @@ export class OrderingService
               throw error;
             }
           );
-        }
-
-        if (this.notification_service) {
-          this.logger?.debug('Send notifications on submit...');
-          const default_templates = await this.loadDefaultTemplates().then(
-            df => df.filter(
-              template => template.use_case?.toString() === 'ORDER_CONFIRMATION_EMAIL' // TemplateUseCase.ORDER_CONFIRMATION
-            )
-          );
-          await Promise.all(response.orders.filter(
-            item => {
-              const setting = settings.get(item.payload.id);
-              return setting?.shop_order_send_confirm_enabled;
-            }
-          ).map(
-            async (item) => {
-              const render_id = `order/confirm/${item.payload.id}`;
-              try {
-                return await this.emitRenderRequest(
-                  item.payload,
-                  aggregation,
-                  render_id,
-                  'ORDER_CONFIRMATION_EMAIL', // TemplateUseCase.ORDER_CONFIRMATION,
-                  default_templates,
-                  request.subject,
-                ).then(
-                  () => this.awaits_render_result.await(render_id, this.kafka_timeout)
-                ).then(
-                  async (bodies) => {
-                    const setting = settings.get(item.payload.id);
-                    const title = bodies.shift();
-                    const body = bodies.join('');
-      
-                    return this.sendNotification(
-                      item.payload,
-                      body,
-                      setting,
-                      title,
-                      context,
-                    );
-                  }
-                );
-              }
-              catch (error: any) {
-                return this.catchStatusError(
-                  error, item
-                );
-              }
-            }
-          ));
         }
 
         if (this.invoice_service) {
@@ -1654,7 +1546,7 @@ export class OrderingService
                 }
               );
 
-              if (r.operation_status?.code !== 200 && r.operation_status?.code !== 207) {
+              if (r.operation_status?.code !== 200) {
                 throw r.operation_status;
               }
               return r.items;
@@ -1717,7 +1609,7 @@ export class OrderingService
                 }
               );
 
-              if (r.operation_status?.code !== 200 && r.operation_status?.code !== 207) {
+              if (r.operation_status?.code !== 200) {
                 throw r.operation_status;
               }
               return r.items;
@@ -1735,9 +1627,13 @@ export class OrderingService
           );
 
           response.invoices = [
-            ...(created_invoices ?? []),
-            ...(rendered_invoices ?? []),
-          ];
+            created_invoices,
+            rendered_invoices,
+          ].flatMap(
+            list => list
+          ).filter(
+            item => item
+          );
 
           this.logger?.debug('Send invoices on submit...');
           const invoices = response.invoices?.filter(
@@ -1769,10 +1665,9 @@ export class OrderingService
                     );
                     invoice.status = status;
                   }
-                  
                 );
 
-                if (r.operation_status?.code !== 200 && r.operation_status?.code !== 207) {
+                if (r.operation_status?.code !== 200) {
                   throw r.operation_status;
                 }
               }
@@ -1790,7 +1685,7 @@ export class OrderingService
           }
         }
 
-        if (response.operation_status?.code === 200 || response.operation_status?.code === 207) {
+        if (response.operation_status?.code === 200) {
           const submits = response.orders.filter(
             order => order.status?.code === 200
           ).map(
@@ -1832,6 +1727,56 @@ export class OrderingService
             }
           }
         );
+
+        if (this.notification_service) {
+          this.logger?.debug('Send notifications on submit...');
+          const default_templates = await this.loadDefaultTemplates().then(
+            df => df.filter(
+              template => template.use_case?.toString() === 'ORDER_CONFIRMATION_EMAIL' // TemplateUseCase.ORDER_CONFIRMATION
+            )
+          );
+          await Promise.all(response.orders.filter(
+            item => {
+              const setting = settings.get(item.payload.id);
+              return setting?.shop_order_send_confirm_enabled;
+            }
+          ).map(
+            async (item) => {
+              const render_id = `order/confirm/${item.payload.id}`;
+              try {
+                return await this.emitRenderRequest(
+                  item.payload,
+                  aggregation,
+                  render_id,
+                  'ORDER_CONFIRMATION_EMAIL', // TemplateUseCase.ORDER_CONFIRMATION,
+                  default_templates,
+                  request.subject,
+                ).then(
+                  () => this.awaits_render_result.await(render_id, this.kafka_timeout)
+                ).then(
+                  async (bodies) => {
+                    const setting = settings.get(item.payload.id);
+                    const title = bodies.shift();
+                    const body = bodies.join('');
+      
+                    return this.sendNotification(
+                      item.payload,
+                      body,
+                      setting,
+                      title,
+                      context,
+                    );
+                  }
+                );
+              }
+              catch (error: any) {
+                return this.catchStatusError(
+                  error, item
+                );
+              }
+            }
+          ));
+        }
       }
       catch (error: any) {
         response.operation_status = this.catchOperationError(error)?.operation_status;
@@ -2484,145 +2429,161 @@ export class OrderingService
     );
 
     return request.items?.map(
-      item => {
-        const master = order_map[item.sections?.[0]?.order_id];
-        if (master?.status?.code !== 200) {
-          return {
-            status: master?.status ?? createStatusCode(
-              item.sections?.[0]?.order_id,
-              this.entityName,
-              this.status_codes.ITEM_NOT_FOUND,
-              item.sections?.[0]?.order_id,
-            )
-          };
-        }
-
-        for (const section of item.sections!) {
-          const order = order_map[section.order_id];
-
-          if (order?.status?.code !== 200) {
+      invoice => {
+        try {
+          const master = order_map[invoice.sections?.[0]?.order_id];
+          if (master?.status?.code !== 200) {
             return {
-              payload: undefined,
-              status: order?.status ?? createStatusCode(
-                section.order_id,
+              status: master?.status ?? createStatusCode(
+                invoice.sections?.[0]?.order_id,
                 this.entityName,
                 this.status_codes.ITEM_NOT_FOUND,
-                section.order_id,
+                invoice.sections?.[0]?.order_id,
               )
             };
           }
-          else if (
-            order.payload?.customer_id !== master?.payload?.customer_id ||
-            order.payload?.shop_id !== master?.payload?.shop_id
-          ) {
-            return {
-              status: createStatusCode(
-                section.order_id,
-                typeof(order.payload),
-                this.status_codes.IN_HOMOGEN_INVOICE,
-                section.order_id,
-              ),
-            };
-          }
-        }
 
-        const sections = item.sections?.map(
-          section => {
+          for (const section of invoice.sections!) {
             const order = order_map[section.order_id];
-            const product_items = (
-              section.selected_items?.length
-                ? order.payload?.items?.filter(
-                  item => item.id! in section.selected_items!
-                ) ?? []
-                : order.payload?.items ?? []
-            ).map(
-              (item, i): Position => ({
-                id: (i + 1).toString().padStart(3, '0'),
-                unit_price: item.unit_price,
-                quantity: item.quantity,
-                amount: item.amount,
-                product_item: {
-                  product_id: item.product_id,
-                  variant_id: item.variant_id,
-                },
-                attributes: [],
-              })
-            );
-            const fulfillment_items: Position[] = (
-              section.fulfillment_mode === FulfillmentInvoiceMode.INCLUDE ? (
-                section.selected_fulfillments?.flatMap(
-                  selection => fulfillment_map[section?.order_id]?.find(
-                    fulfillment => fulfillment.payload?.id === selection?.fulfillment_id
-                  )?.payload?.packaging?.parcels?.filter(
-                    parcel => !selection?.selected_parcels?.length
-                      || selection.selected_parcels.includes(parcel.id)
-                  )
-                ) ?? fulfillment_map[section.order_id]?.flatMap(
-                  fulfillment => fulfillment.payload?.packaging?.parcels
-                ) ?? []
-              ) : []
-            ).map(
-              (a, i): Position => ({
-                id: (i + product_items.length + 1).toString().padStart(3, '0'),
-                unit_price: a?.price,
-                quantity: 1,
-                amount: a?.amount,
-                fulfillment_item: {
-                  product_id: a?.product_id,
-                  variant_id: a?.variant_id,
-                },
-              })
-            );
 
-            const positions = [
-              ...product_items,
-              ...fulfillment_items,
-            ];
-            return {
-              id: section.order_id,
-              amounts: calcTotalAmounts(
-                positions.map(p => p.amount),
+            if (order?.status?.code !== 200) {
+              return {
+                payload: undefined,
+                status: order?.status ?? createStatusCode(
+                  section.order_id,
+                  this.entityName,
+                  this.status_codes.ITEM_NOT_FOUND,
+                  section.order_id,
+                )
+              };
+            }
+            else if (
+              order.payload?.customer_id !== master?.payload?.customer_id ||
+              order.payload?.shop_id !== master?.payload?.shop_id
+            ) {
+              return {
+                status: createStatusCode(
+                  section.order_id,
+                  typeof(order.payload),
+                  this.status_codes.IN_HOMOGEN_INVOICE,
+                  section.order_id,
+                ),
+              };
+            }
+          }
+
+          const sections = invoice.sections?.map(
+            section => {
+              const order = order_map[section.order_id];
+              const product_items = (
+                section.selected_items?.length
+                  ? order.payload.items.filter(
+                    item => section.selected_items.includes(item.id)
+                  ) ?? []
+                  : order.payload?.items ?? []
+              ).map(
+                (item, i): Position => ({
+                  id: randomUUID(),
+                  unit_price: item.unit_price,
+                  quantity: item.quantity,
+                  amount: item.amount ?? throwStatusCode(
+                    item.id,
+                    'Product',
+                    this.status_codes.NO_AMOUNT,
+                    item.id
+                  ),
+                  product_item: {
+                    product_id: item.product_id,
+                    variant_id: item.variant_id,
+                  },
+                  attributes: [],
+                })
+              );
+              const fulfillment_items: Position[] = (
+                section.fulfillment_mode === FulfillmentInvoiceMode.INCLUDE ? (
+                  section.selected_fulfillments?.flatMap(
+                    selection => fulfillment_map[section.order_id]?.find(
+                      fulfillment => fulfillment.payload.id === selection.fulfillment_id
+                    )?.payload.packaging.parcels.filter(
+                      parcel => !selection?.selected_parcels?.length
+                        || selection.selected_parcels.includes(parcel.id)
+                    )
+                  ) ?? fulfillment_map[section.order_id]?.flatMap(
+                    fulfillment => fulfillment.payload.packaging.parcels
+                  ) ?? []
+                ) : []
+              ).map(
+                (a, i): Position => ({
+                  id: randomUUID(),
+                  unit_price: a.price,
+                  quantity: 1,
+                  amount: a.amount ?? throwStatusCode(
+                    a.id,
+                    'FulfillmentProduct',
+                    this.status_codes.NO_AMOUNT,
+                    a.id
+                  ),
+                  fulfillment_item: {
+                    product_id: a?.product_id,
+                    variant_id: a?.variant_id,
+                  },
+                })
+              );
+
+              const positions = [
+                ...product_items,
+                ...fulfillment_items,
+              ];
+              return {
+                id: section.order_id,
+                amounts: calcTotalAmounts(
+                  positions.map(p => p.amount),
+                  aggregation.currencies,
+                ),
+                customer_remark: order.payload?.customer_remark,
+                positions,
+              } as Section;
+            }
+          );
+
+          return {
+            payload: {
+              invoice_number: invoice.invoice_number,
+              user_id: master.payload.user_id,
+              customer_id: master.payload.customer_id,
+              shop_id: master.payload.shop_id,
+              references: invoice.sections.map(
+                section => ({
+                  instance_type: this.instance_type,
+                  instance_id: section.order_id,
+                })
+              ),
+              customer_remark: master.payload.customer_remark,
+              recipient: master.payload.billing_address,
+              total_amounts: calcTotalAmounts(
+                sections.flatMap(s => s.amounts),
                 aggregation.currencies,
               ),
-              customer_remark: order.payload?.customer_remark,
-              positions,
-            } as Section;
-          }
-        );
-
-        return {
-          payload: {
-            invoice_number: item.invoice_number,
-            user_id: master.payload?.user_id,
-            customer_id: master.payload?.customer_id,
-            shop_id: master.payload?.shop_id,
-            references: item.sections?.map(
-              section => ({
-                instance_type: this.instance_type,
-                instance_id: section.order_id,
-              })
+              sections,
+              meta: {
+                owners: master.payload.meta.owners
+              }
+            },
+            status: createStatusCode(
+              master.payload.id,
+              'Invoice',
+              this.status_codes.OK,
+              master.payload.id,
             ),
-            customer_remark: master.payload?.customer_remark,
-            recipient: master.payload?.billing_address,
-            total_amounts: calcTotalAmounts(
-              sections.flatMap(s => s.amounts),
-              aggregation.currencies,
-            ),
-            sections,
-            meta: {
-              owners: master.payload?.meta?.owners
-            }
-          },
-          status: createStatusCode(
-            master.payload?.id,
-            'Invoice',
-            this.status_codes.OK,
-            master.payload?.id,
-          ),
-        };
+          };
+        }
+        catch (error: any) {
+          return this.catchStatusError(error)
+        }
       }
     ) ?? [];
   }
+  
 
   private async doInvoice(
     action: (request: InvoiceList, context?: CallContext) => Promise<InvoiceListResponse>,
@@ -2646,14 +2607,11 @@ export class OrderingService
         fulfillments,
         aggregation,
       );
-      const invalids = prototypes.filter(
+      const invalid = prototypes.some(
         proto => proto.status?.code !== 200
       );
-      const valids = prototypes.filter(
-        proto => proto.status?.code === 200
-      )
 
-      if (valids.length === 0) {
+      if (invalid) {
         return {
           items: prototypes,
           total_count: prototypes.length,
@@ -2663,28 +2621,16 @@ export class OrderingService
 
       const response = await action(
         {
-          items: valids.map(
+          items: prototypes.map(
             v => v.payload
           ),
-          total_count: valids.length,
+          total_count: prototypes.length,
           subject: this.tech_user ?? request.subject,
         },
         context
       );
 
-      return {
-        items: [
-          ...(response?.items ?? []),
-          ...invalids
-        ],
-        total_count: valids.length + invalids.length,
-        operation_status: (response.operation_status.code === 200 && invalids.length)
-          ? createOperationStatusCode(
-            this.operation_status_codes.PARTIAL,
-            'Invoice',
-          )
-          : response.operation_status,
-      };
+      return response;
     }
     catch (e) {
       return this.catchOperationError(e);
@@ -2944,7 +2890,7 @@ export class OrderingService
     const payloads: Payload[] = templates.map(
       (template, i) => ({
         content_type: 'text/html',
-        data: marshallProtobufAny(item),
+        data: packRenderData(aggregation, item),
         templates: marshallProtobufAny({
           [i]: {
             body: bodies[i],

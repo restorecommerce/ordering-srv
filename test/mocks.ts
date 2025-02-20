@@ -73,7 +73,7 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/currency.js';
 import {
   ManufacturerListResponse
-} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/manufacturer.js';
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/manufacturer.js';
 import {
   getRedisInstance,
   logger
@@ -201,9 +201,9 @@ const customers: CustomerListResponse = {
 const currencies: CurrencyListResponse = {
   items: [{
     payload: {
-      id: 'euro',
+      id: 'EUR',
       countryIds: ['germany'],
-      name: 'Euro',
+      name: 'EUR',
       precision: 2,
       symbol: '€',
       meta: mainMeta,
@@ -291,7 +291,7 @@ const products: ProductListResponse = {
               name: 'Physical Product 1 Blue',
               description: 'This is a physical product in blue',
               price: {
-                currencyId: 'euro',
+                currencyId: 'EUR',
                 regularPrice: 9.99,
                 salePrice: 8.99,
                 sale: false,
@@ -368,7 +368,7 @@ const products: ProductListResponse = {
               name: 'Physical Product 1 Blue',
               description: 'This is a physical product in blue',
               price: {
-                currencyId: 'euro',
+                currencyId: 'EUR',
                 regularPrice: 19.99,
                 salePrice: 18.99,
                 sale: false,
@@ -818,6 +818,129 @@ export const samples = {
   },
 };
 
+const solutions: FulfillmentSolutionListResponse = {
+  items: [
+    {
+      reference: {
+        instanceType: 'urn:restorecommerce:acs:model:order:Order',
+        instanceId: 'validOrder_1',
+      },
+      solutions: [
+        {
+          amounts: [
+            {
+              currencyId: 'EUR',
+              gross: 2.0,
+              net: 2.38,
+              vats: [
+                {
+                  taxId: 'tax_1',
+                  vat: 0.38,
+                }
+              ]
+            },
+          ],
+          parcels: [
+            {
+              id: '1',
+              items: [
+                  {
+                  productId: 'physicalProduct_1',
+                  variantId: '1',
+                  package: {
+                    sizeInCm: {
+                      height: 10,
+                      length: 20,
+                      width: 15,
+                    },
+                    weightInKg: 0.58,
+                    rotatable: true,
+                  },
+                  quantity: 4,
+                },
+              ],
+              amount: {
+                currencyId: 'EUR',
+                gross: 2.0,
+                net: 2.38,
+                vats: [
+                  {
+                    taxId: 'tax_1',
+                    vat: 0.38,
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      status: {
+        id: 'validOrder_1',
+        code: 200,
+        message: 'OK',
+      }
+    },
+    {
+      reference: {
+        instanceType: 'urn:restorecommerce:acs:model:order:Order',
+        instanceId: 'validOrder_2',
+      },
+      solutions: [
+        {
+          amounts: [
+            {
+              currencyId: 'EUR',
+              gross: 2.0,
+              net: 2.38,
+              vats: [
+                {
+                  taxId: 'tax_1',
+                  vat: 0.38,
+                }
+              ]
+            },
+          ],
+          parcels: [
+            {
+              id: '1',
+              items: [
+                {
+                  productId: 'physicalProduct_1',
+                  variantId: '1',
+                  package: {
+                    sizeInCm: {
+                      height: 10,
+                      length: 20,
+                      width: 15,
+                    },
+                    weightInKg: 0.58,
+                    rotatable: true,
+                  },
+                  quantity: 4,
+                },
+              ],
+              amount: {
+                currencyId: 'EUR',
+                gross: 2.0,
+                net: 2.38,
+                vats: [
+                  {
+                    taxId: 'tax_1',
+                    vat: 0.38,
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      status
+    }
+  ],
+  totalCount: 1,
+  operationStatus
+};
+
 export const rules = {
   'acs-srv': {
     isAllowed: (
@@ -933,136 +1056,55 @@ export const rules = {
     find: (
       call: any,
       callback: (error: any, response: FulfillmentSolutionListResponse) => void,
-    ) => callback(null, {
-      items: [
-        {
-          reference: {
-            instanceType: 'unr:restorecommerce:io:Order',
-            instanceId: 'validOrder_1',
-          },
-          solutions: [
-            {
-              amounts: [
-                {
-                  currencyId: 'euro',
-                  gross: 2.0,
-                  net: 2.38,
-                  vats: [
-                    {
-                      taxId: 'tax_1',
-                      vat: 0.38,
-                    }
-                  ]
-                },
-              ],
-              parcels: [
-                {
-                  id: '1',
-                  items: [
-                      {
-                      productId: 'physicalProduct_1',
-                      variantId: '1',
-                      package: {
-                        sizeInCm: {
-                          height: 10,
-                          length: 20,
-                          width: 15,
-                        },
-                        weightInKg: 0.58,
-                        rotatable: true,
-                      },
-                      quantity: 4,
-                    },
-                  ],
-                }
-              ]
-            }
-          ],
-          status: {
-            id: 'validOrder_1',
-            code: 200,
-            message: 'OK',
-          }
-        },
-        {
-          reference: {
-            instanceType: 'unr:restorecommerce:io:Order',
-            instanceId: 'validOrder_2',
-          },
-          solutions: [
-            {
-              amounts: [
-                {
-                  currencyId: 'euro',
-                  gross: 2.0,
-                  net: 2.38,
-                  vats: [
-                    {
-                      taxId: 'tax_1',
-                      vat: 0.38,
-                    }
-                  ]
-                },
-              ],
-              parcels: [
-                {
-                  id: '1',
-                  items: [
-                      {
-                      productId: 'physicalProduct_1',
-                      variantId: '1',
-                      package: {
-                        sizeInCm: {
-                          height: 10,
-                          length: 20,
-                          width: 15,
-                        },
-                        weightInKg: 0.58,
-                        rotatable: true,
-                      },
-                      quantity: 4,
-                    },
-                  ],
-                }
-              ]
-            }
-          ],
-          status
-        }
-      ],
-      totalCount: 1,
-      operationStatus
-    }),
+    ) => callback(null, solutions),
   },
   fulfillment: {
     create: (
       call: any,
       callback: (error: any, response: FulfillmentListResponse) => void,
     ) => callback(null, {
-      items: call.request.items.map(
-        (item: FulfillmentResponse) => ({
-          payload: item,
-          status: {
-            code: 200,
-          }
-        })
+      items: solutions.items!.map(
+        item => {
+          const solution = item.solutions![0];
+          return {
+            payload: {
+              references: [item.reference!],
+              packaging: {
+                parcels: solution!.parcels,
+              },
+              totalAmounts: solution!.amounts,
+            },
+            status: {
+              code: 200,
+            }
+          };
+        }
       ),
-      totalCount: 1,
+      totalCount: solutions.items!.length,
       operationStatus
     }),
     evaluate: (
       call: any,
       callback: (error: any, response: FulfillmentListResponse) => void,
     ) => callback(null, {
-      items: call.request.items.map(
-        (item: FulfillmentResponse) => ({
-          payload: item,
-          status: {
-            code: 200,
-          }
-        })
+      items: solutions.items!.map(
+        item => {
+          const solution = item.solutions![0];
+          return {
+            payload: {
+              references: [item.reference!],
+              packaging: {
+                parcels: solution!.parcels,
+              },
+              totalAmounts: solution!.amounts,
+            },
+            status: {
+              code: 200,
+            }
+          };
+        }
       ),
-      totalCount: 1,
+      totalCount: solutions.items!.length,
       operationStatus
     }),
   },

@@ -149,7 +149,7 @@ export class AccessControlledServiceBase<O extends ResourceListResponse, I exten
       code: Number.isInteger(e?.code) ? e.code : 500,
       message: e?.message ?? e?.details ?? (e ? JSON.stringify(e) : 'Unknown Error!')
     };
-    this.logger?.warn(e?.stack, item);
+    this.logger?.warn(e?.stack ?? item.status.message, item);
     return item;
   }
 
@@ -159,7 +159,7 @@ export class AccessControlledServiceBase<O extends ResourceListResponse, I exten
       code: Number.isInteger(e?.code) ? e.code : 500,
       message: e?.message ?? e?.details ?? (e ? JSON.stringify(e) : 'Unknown Error!'),
     };
-    this.logger?.error(e?.stack, response);
+    this.logger?.error(e?.stack ?? response.operation_status.message, response);
     return response;
   }
 
