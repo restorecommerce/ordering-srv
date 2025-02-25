@@ -163,6 +163,7 @@ import {
   calcAmount,
   calcTotalAmounts,
   packRenderData,
+  StateMap,
 } from './utils.js';
 
 
@@ -1211,62 +1212,164 @@ export class OrderingService
   }
 
   public async updateState(
-    ids: string[],
+    orders: OrderMap,
     state: OrderState,
     subject?: Subject,
-    context?: CallContext
+    context?: CallContext,
+    aggregation?: AggregatedOrderListResponse,
+    settings?: ResolvedSettingMap,
+    upsert = false,
   ): Promise<OrderListResponse> {
-    try {
-      const responseMap = await this.getOrderMap(
-        ids,
-        subject,
-        context
-      );
+    const items = Object.values(orders).filter(
+      item => item.status?.code === 200 && item.payload
+    );
 
-      const items = Object.values(responseMap).filter(
-        item => item.status?.code === 200 && item.payload
+    aggregation ??= await this.aggregate(
+      {
+        items,
+      },
+      subject,
+      context,
+    );
+
+    settings ??= await this.aggregateSettings(
+      aggregation
+    );
+
+    const action = upsert ? this.superUpsert.bind(this) : this.superUpdate.bind(this);
+    const response = await action(
+      {
+        items: items.map(
+          item => {
+            item.payload.order_state = state;
+            return item.payload;
+          }
+        ),
+        total_count: items.length,
+        subject
+      },
+      context
+    ).then(
+      response => {
+        if (response.operation_status?.code !== 200) {
+          throw response.operation_status;
+        }
+        response.items?.forEach(
+          item => orders[item.payload?.id ?? item.status?.id] = item
+        );
+        return response;
+      }
+    );
+    
+    if (this.notification_service) {
+      this.logger?.debug(`Send notifications for Order State ${state}...`);
+      const default_templates = await this.loadDefaultTemplates().then(
+        df => df.filter(
+          template => template.use_case === StateMap[state].template
+        )
+      );
+      const notified = await Promise.all(response.items?.filter(
+        item => {
+          const setting = settings.get(item.payload?.id);
+          return item.status?.code === 200
+            && !setting?.shop_order_notifications_disabled;
+        }
       ).map(
         item => {
-          item.payload!.order_state = state;
-          return item.payload!;
+          try {
+            const render_id = `order/${StateMap[state].action}/${item.payload.id}`;
+            return this.emitRenderRequest(
+              item.payload,
+              aggregation,
+              render_id,
+              StateMap[state].template,
+              default_templates,
+              subject,
+            ).then(
+              () => this.awaits_render_result.await(render_id, this.kafka_timeout)
+            ).then(
+              async (bodies) => {
+                const setting = settings.get(item.payload.id);
+                const title = bodies.shift();
+                const body = bodies.join('');
+                const status = await this.sendNotification(
+                  item.payload,
+                  body,
+                  setting,
+                  title,
+                  context,
+                );
+                if (status.code === 200) {
+                  item.payload.order_state = StateMap[state].post_state;
+                }
+                else {
+                  item.status = {
+                    id: item.payload?.id,
+                    ...status
+                  };
+                }
+                return item;
+              }
+            );
+          }
+          catch (error: any) {
+            return this.catchStatusError(
+              error, item
+            );
+          }
         }
-      );
-
-      const response = await this.superUpdate(
+      ));
+      await this.superUpdate(
         {
-          items,
-          total_count: items.length,
+          items: notified.filter(
+            item => {
+              if (item.status?.code === 200) {
+                return true;
+              }
+              else {
+                orders[item.payload?.id ?? item.status?.id].status = item.status;
+                return false;
+              }
+            }
+          ).map(
+            item => item.payload
+          ),
+          total_count: notified.length,
           subject
         },
         context
-      );
-
-      if (response.operation_status?.code === 200) {
-        response.items?.forEach(
-          (item: OrderResponse) => {
-            responseMap[item.payload?.id ?? item.status?.id] = item;
-            if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
-              this.orderingTopic.emit(this.emitters['INVALID'], item);
-            }
-            else if (item?.payload?.order_state in this.emitters) {
-              this.orderingTopic.emit(this.emitters[item.payload?.order_state], item.payload);
-            }
+      ).then(
+        response => {
+          if (response.operation_status?.code !== 200) {
+            throw response.operation_status;
           }
-        );
-      }
-      else {
-        throw response.operation_status;
-      }
+          response.items?.forEach(
+            item => orders[item.payload?.id ?? item.status?.id] = item
+          );
+          return response;
+        }
+      );
+    }
 
-      return {
-        items: Object.values(responseMap),
-        total_count: ids.length,
-        operation_status: response.operation_status
-      } as OrderListResponse;
-    }
-    catch (e) {
-      return this.catchOperationError(e);
-    }
+    const results = Object.values(orders);
+    await Promise.all(results.map(
+      async item => {
+        if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
+          await this.orderingTopic.emit(this.emitters['INVALID'], item);
+        }
+        else if (item.payload?.order_state in this.emitters) {
+          await this.orderingTopic.emit(this.emitters[item.payload.order_state], item.payload);
+        }
+      }
+    ));
+    
+    return {
+      items: results,
+      total_count: results.length,
+      operation_status: results.some(item => item.status?.code !== 200)
+        ? this.operation_status_codes.PARTIAL
+        : this.operation_status_codes.SUCCESS
+    } as OrderListResponse;
   }
 
   public override superCreate(
@@ -1417,7 +1520,7 @@ export class OrderingService
                 item => {
                   const setting = settings.get(item.payload?.id);
                   return item.status?.code === 200
-                    && setting?.shop_fulfillment_evaluate_enabled
+                    && !setting?.shop_fulfillment_evaluate_disabled
                 }
               ).map(item => ({
                 order_id: item.payload.id,
@@ -1466,7 +1569,7 @@ export class OrderingService
                 item => {
                   const setting = settings.get(item.payload?.id);
                   return item.status?.code === 200
-                    && setting.shop_fulfillment_create_enabled;
+                    && !setting?.shop_fulfillment_create_disabled;
                 }
               ).map(item => ({
                 order_id: item.payload.id,
@@ -1518,9 +1621,9 @@ export class OrderingService
                 item => {
                   const setting = settings.get(item.payload?.id);
                   return item.status?.code === 200
-                    && setting.shop_invoice_create_enabled
-                    && !setting.shop_invoice_render_enabled
-                    && !setting.shop_invoice_send_enabled;
+                    && !setting?.shop_invoice_create_disabled
+                    && setting?.shop_invoice_render_disabled
+                    && setting?.shop_invoice_send_disabled;
                 }
               ).map(
                 order => ({
@@ -1577,15 +1680,15 @@ export class OrderingService
           );
 
           this.logger?.debug('Render invoices on submit...');
-          const rendered_invoices = await this._renderInvoice(
+          await this._renderInvoice(
             {
               items: response.orders?.filter(
                 item => {
                   const setting = settings.get(item.payload?.id);
                   return item.status?.code === 200
                     && (
-                      setting.shop_invoice_render_enabled
-                      || setting.shop_invoice_send_enabled
+                      !setting?.shop_invoice_render_disabled
+                      || !setting?.shop_invoice_send_disabled
                     );
                 }
               ).map(
@@ -1648,7 +1751,7 @@ export class OrderingService
               const setting = settings.get(item.payload?.references?.[0]?.instance_id);
               return item.status?.code === 200
                 && item.payload?.references?.[0]?.instance_id
-                && setting?.shop_invoice_send_enabled;
+                && !setting?.shop_invoice_send_disabled;
             }
           ).map(
             invoice => ({
@@ -1692,98 +1795,20 @@ export class OrderingService
           }
         }
 
-        if (response.operation_status?.code === 200) {
-          const submits = response.orders.filter(
-            order => order.status?.code === 200
-          ).map(
-            order => {
-              order.payload.order_state = OrderState.SUBMITTED;
-              return order.payload;
-            }
-          );
-  
-          await this.superUpsert(
-            OrderList.fromPartial({
-              items: submits,
-              total_count: submits.length,
-              subject: request.subject,
-            }),
-            context,
-          ).then(
-            r => r.items?.forEach(
-              item => response_map[item.payload?.id ?? item.status?.id] = item
-            )
-          );
-        }
-        else {
-          Object.values(response_map).forEach(
-            item => item.status = {
-              ...item.status,
-              ...response.operation_status
-            }
-          );
-        }
-
-        if (this.notification_service) {
-          this.logger?.debug('Send notifications on submit...');
-          const default_templates = await this.loadDefaultTemplates().then(
-            df => df.filter(
-              template => template.use_case?.toString() === 'ORDER_CONFIRMATION_EMAIL' // TemplateUseCase.ORDER_CONFIRMATION
-            )
-          );
-          await Promise.all(response.orders.filter(
-            item => {
-              const setting = settings.get(item.payload.id);
-              return setting?.shop_order_send_confirm_enabled;
-            }
-          ).map(
-            item => {
-              const render_id = `order/confirm/${item.payload.id}`;
-              try {
-                return this.emitRenderRequest(
-                  item.payload,
-                  aggregation,
-                  render_id,
-                  'ORDER_CONFIRMATION_EMAIL', // TemplateUseCase.ORDER_CONFIRMATION,
-                  default_templates,
-                  request.subject,
-                ).then(
-                  () => this.awaits_render_result.await(render_id, this.kafka_timeout)
-                ).then(
-                  async (bodies) => {
-                    const setting = settings.get(item.payload.id);
-                    const title = bodies.shift();
-                    const body = bodies.join('');
-      
-                    return this.sendNotification(
-                      item.payload,
-                      body,
-                      setting,
-                      title,
-                      context,
-                    );
-                  }
-                );
-              }
-              catch (error: any) {
-                return this.catchStatusError(
-                  error, item
-                );
-              }
-            }
-          ));
-        }
-
-        await Promise.all(Object.values(response_map).map(
-          async item => {
-            if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
-              await this.orderingTopic.emit(this.emitters['INVALID'], item);
-            }
-            else if (item.payload?.order_state in this.emitters) {
-              await this.orderingTopic.emit(this.emitters[item.payload.order_state], item.payload);
-            }
+        await this.updateState(
+          response_map,
+          OrderState.SUBMITTED,
+          request.subject,
+          context,
+          aggregation,
+          settings,
+          true,
+        ).then(
+          updates => {
+            response.orders = updates.items;
+            response.operation_status = updates.operation_status;
           }
-        ));
+        );
       }
       catch (error: any) {
         response.operation_status = this.catchOperationError(error)?.operation_status;
@@ -1820,12 +1845,12 @@ export class OrderingService
               context,
             ).then(
               r => {
-                if (r.operation_status?.code > response.operation_status?.code) {
-                  r.operation_status.message = 'On Fulfillment Clean Up: ' + r.operation_status.message;
-                  response.operation_status = r.operation_status;
+                if (r.operation_status?.code !== 200) {
+                  throw r.operation_status;
+                  // r.operation_status.message = 'On Fulfillment Clean Up: ' + r.operation_status.message;
+                  // response.operation_status = r.operation_status;
                 }
-              }
-            ).catch(
+              },
               error => {
                 if (error.message) {
                   error.message = 'On Fulfillment Clean Up: ' + error.message
@@ -1858,18 +1883,26 @@ export class OrderingService
     database: 'arangoDB',
     useCache: true,
   })
-  public cancel(
+  public async cancel(
     request: OrderIdList,
     context?: CallContext
   ): Promise<OrderListResponse> {
-    const response = this.updateState(
-      request.ids ?? [],
-      OrderState.CANCELLED,
-      request.subject,
-      context,
-    );
-
-    return response;
+    try {
+      const orders = await this.getOrderMap(
+        request.ids,
+        request.subject,
+        context,
+      );
+      return await this.updateState(
+        orders,
+        OrderState.CANCELLED,
+        request.subject,
+        context,
+      );
+    }
+    catch (e: any) {
+      return this.catchOperationError<OrderListResponse>(e);
+    }
   }
 
   @resolves_subject()
@@ -1881,16 +1914,26 @@ export class OrderingService
     database: 'arangoDB',
     useCache: true,
   })
-  public withdraw(
+  public async withdraw(
     request: OrderIdList,
     context?: CallContext,
   ): Promise<OrderListResponse> {
-    return this.updateState(
-      request.ids ?? [],
-      OrderState.WITHDRAWN,
-      request.subject,
-      context,
-    );
+    try {
+      const orders = await this.getOrderMap(
+        request.ids,
+        request.subject,
+        context,
+      );
+      return await this.updateState(
+        orders,
+        OrderState.WITHDRAWN,
+        request.subject,
+        context,
+      );
+    }
+    catch (e: any) {
+      return this.catchOperationError<OrderListResponse>(e);
+    }
   }
 
   @resolves_subject()
@@ -2992,11 +3035,6 @@ export class OrderingService
       },
       context
     );
-
-    if (status?.operation_status?.code === 200) {
-      (order.order_state as any) = 'SENT';
-    }
-
-    return order;
+    return status?.operation_status;
   }
 }

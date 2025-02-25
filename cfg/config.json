@@ -345,7 +345,7 @@
       "prefix": "acs:"
     },
     "techUser": {
-      "id": "root_tech_user",
+      "id": "root-tech-user",
       "token": "1a4c6789-6435-487a-9308-64d06384acf9"
     }
   },
@@ -411,12 +411,13 @@
   },
   "defaults": {
     "Setting": {
-      "shop_fulfillment_evaluate_enabled": true,
-      "shop_fulfillment_create_enabled": true,
-      "shop_invoice_create_enabled": true,
-      "shop_invoice_render_enabled": true,
-      "shop_invoice_send_enabled": false,
-      "shop_order_error_cleanup_enabled": true
+      "shop_fulfillment_evaluate_disabled": false,
+      "shop_fulfillment_create_disabled": false,
+      "shop_invoice_create_disabled": false,
+      "shop_invoice_render_disabled": false,
+      "shop_invoice_send_disabled": true,
+      "shop_order_notifications_disabled": true,
+      "shop_order_error_cleanup_disabled": false
     },
     "Templates": [
       {

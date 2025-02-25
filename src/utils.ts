@@ -4,6 +4,7 @@ import {
   Order,
   OrderResponse,
   OrderListResponse,
+  OrderState,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/order.js';
 import {
   Product,
@@ -94,6 +95,7 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/timezone.js';
 import {
   Template,
+  TemplateUseCase,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/template.js';
 import {
   Payload_Strategy
@@ -194,37 +196,32 @@ export const DefaultUrns = {
   organization: 'urn:restorecommerce:acs:model:organization.Organization',
   user: 'urn:restorecommerce:acs:model:user.User',
 
-  shop_order_send_confirm_enabled:  'urn:restorecommerce:shop:setting:order:submit:notification:enabled',       // Sends notification on order submit if enabled (default: true)
-  shop_order_send_cancel_enabled:   'urn:restorecommerce:shop:setting:order:cancel:notification:enabled',       // Sends notification on order cancel if enabled (default: true)
-  shop_order_send_withdrawn_enabled:'urn:restorecommerce:shop:setting:order:withdrawn:notification:enabled', // Sends notification on order withdrawn if enabled (default: true)
-
-  shop_fulfillment_evaluate_enabled:'urn:restorecommerce:shop:setting:order:submit:fulfillment:evaluate:enabled',
-  shop_fulfillment_create_enabled:  'urn:restorecommerce:shop:setting:order:submit:fulfillment:create:enabled', // Creates fulfillment on order submit if enabled (default: true)
-  shop_invoice_create_enabled:      'urn:restorecommerce:shop:setting:order:submit:invoice:create:enabled',     // Creates invoice on order submit if enabled (default: true)
-  shop_invoice_render_enabled:      'urn:restorecommerce:shop:setting:order:submit:invoice:render:enabled',     // Renders invoice on order submit if enabled, overrides create! (default: true)
-  shop_invoice_send_enabled:        'urn:restorecommerce:shop:setting:order:submit:invoice:send:enabled',       // Sends invoice on order submit if enabled, overrides render! (default: true)
-  shop_order_error_cleanup_enabled: 'urn:restorecommerce:shop:setting:order:error:cleanup:enabled',             // Clean up orders on any error of fulfillment or invoice (default: false)
-  shop_email_render_options:        'urn:restorecommerce:shop:setting:order:email:render:options',              // [json]: override email rendering options - default: cfg -> null
-  shop_email_render_strategy:       'urn:restorecommerce:shop:setting:order:email:render:strategy',             // [enum]: override email rendering strategy - default: cfg -> INLINE
-  shop_email_provider:              'urn:restorecommerce:shop:setting:order:email:provider',                    // [string]: override to supported email provider - default: cfg -> null
-  shop_email_cc:                    'urn:restorecommerce:shop:setting:order:email:cc',                          // [string]: add recipients in CC (comma separated) - default: cfg -> null
-  shop_email_bcc:                   'urn:restorecommerce:shop:setting:order:email:bcc',                         // [string]: add recipients in BC (comma separated) - default: cfg -> null
-  customer_locales:                 'urn:restorecommerce:customer:setting:locales',                             // [string]: list of locales in descending preference (comma separated) - default: cfg -> 'en'
-  customer_email_cc:                'urn:restorecommerce:customer:setting:order:email:cc',                      // [string]: add recipients in CC (comma separated) - default: cfg -> null
-  customer_email_bcc:               'urn:restorecommerce:customer:setting:order:email:bcc',                     // [string]: add recipients in BC (comma separated) - default: cfg -> null
+  shop_order_notifications_disabled:  'urn:restorecommerce:shop:setting:order:state:notification:disabled',       // Sends notification on order state change unless disabled (default: false)
+  shop_fulfillment_evaluate_disabled:'urn:restorecommerce:shop:setting:order:submit:fulfillment:evaluate:disabled',
+  shop_fulfillment_create_disabled:  'urn:restorecommerce:shop:setting:order:submit:fulfillment:create:disabled', // Creates fulfillment on order submit unless disabled (default: false)
+  shop_invoice_create_disabled:      'urn:restorecommerce:shop:setting:order:submit:invoice:create:disabled',     // Creates invoice on order submit unless disabled (default: false)
+  shop_invoice_render_disabled:      'urn:restorecommerce:shop:setting:order:submit:invoice:render:disabled',     // Renders invoice on order submit unless disabled, overrides create! (default: false)
+  shop_invoice_send_disabled:        'urn:restorecommerce:shop:setting:order:submit:invoice:send:disabled',       // Sends invoice on order submit unless disabled, overrides render! (default: false)
+  shop_order_error_cleanup_disabled: 'urn:restorecommerce:shop:setting:order:error:cleanup:disabled',             // Clean up orders on any error of fulfillment or invoice (default: false)
+  shop_email_render_options:        'urn:restorecommerce:shop:setting:order:email:render:options',                // [json]: override email rendering options - default: cfg -> null
+  shop_email_render_strategy:       'urn:restorecommerce:shop:setting:order:email:render:strategy',               // [enum]: override email rendering strategy - default: cfg -> INLINE
+  shop_email_provider:              'urn:restorecommerce:shop:setting:order:email:provider',                      // [string]: override to supported email provider - default: cfg -> null
+  shop_email_cc:                    'urn:restorecommerce:shop:setting:order:email:cc',                            // [string]: add recipients in CC (comma separated) - default: cfg -> null
+  shop_email_bcc:                   'urn:restorecommerce:shop:setting:order:email:bcc',                           // [string]: add recipients in BC (comma separated) - default: cfg -> null
+  customer_locales:                 'urn:restorecommerce:customer:setting:locales',                               // [string]: list of locales in descending preference (comma separated) - default: cfg -> 'en'
+  customer_email_cc:                'urn:restorecommerce:customer:setting:order:email:cc',                        // [string]: add recipients in CC (comma separated) - default: cfg -> null
+  customer_email_bcc:               'urn:restorecommerce:customer:setting:order:email:bcc',                       // [string]: add recipients in BC (comma separated) - default: cfg -> null
 };
 export type KnownUrns = typeof DefaultUrns;
 
 export const DefaultSetting = {
-  shop_order_send_confirm_enabled: true,
-  shop_order_send_cancel_enabled: true,
-  shop_order_send_withdrawn_enabled: true,
-  shop_fulfillment_evaluate_enabled: true,
-  shop_fulfillment_create_enabled: true,
-  shop_invoice_create_enabled: true,
-  shop_invoice_render_enabled: true,
-  shop_invoice_send_enabled: false,
-  shop_order_error_cleanup_enabled: true,
+  shop_order_notifications_disabled: false,
+  shop_fulfillment_evaluate_disabled: false,
+  shop_fulfillment_create_disabled: false,
+  shop_invoice_create_disabled: false,
+  shop_invoice_render_disabled: false,
+  shop_invoice_send_disabled: false,
+  shop_order_error_cleanup_disabled: false,
   shop_email_render_options: undefined as any,
   shop_email_render_strategy: Payload_Strategy.INLINE,
   shop_email_provider: undefined as string,
@@ -241,14 +238,14 @@ export type ResolvedSettingMap = Map<string, ResolvedSetting>;
 const parseList = (value: string) => value?.match(/^\[.*\]$/) ? JSON.parse(value) : value?.split(/\s*,\s*/)
 const parseTrue = (value: string) => value?.toString().toLowerCase() === 'true';
 const SettingParser: { [key: string]: (value: string) => any } = {
-  shop_order_send_confirm_enabled: parseTrue,
-  shop_order_send_cancel_enabled: parseTrue,
-  shop_order_send_withdrawn_enabled: parseTrue,
-  shop_fulfillment_evaluate_enabled: parseTrue,
-  shop_fulfillment_create_enabled: parseTrue,
-  shop_invoice_create_enabled: parseTrue,
-  shop_invoice_render_enabled: parseTrue,
-  shop_invoice_send_enabled: parseTrue,
+  shop_order_send_confirm_disabled: parseTrue,
+  shop_order_send_cancel_disabled: parseTrue,
+  shop_order_send_withdrawn_disabled: parseTrue,
+  shop_fulfillment_evaluate_disabled: parseTrue,
+  shop_fulfillment_create_disabled: parseTrue,
+  shop_invoice_create_disabled: parseTrue,
+  shop_invoice_render_disabled: parseTrue,
+  shop_invoice_send_disabled: parseTrue,
   shop_order_error_cleanup: parseTrue,
   shop_email_render_options: JSON.parse,
   shop_locales: parseList,
@@ -268,6 +265,41 @@ export const parseSetting = (key: string, value: string) => {
     return value;
   }
 }
+
+export type StateMapItem = {
+  action: string,
+  template: TemplateUseCase,
+  post_state: OrderState,
+};
+
+export const StateMap: Record<OrderState, StateMapItem> = {
+  [OrderState.UNRECOGNIZED]: null,
+  [OrderState.PENDING]: {
+    action: 'pending',
+    template: 'ORDER_PENDING_EMAIL' as TemplateUseCase,
+    post_state: 'PENDING_NOTIFIED' as OrderState,
+  },
+  [OrderState.SUBMITTED]: {
+    action: 'submit',
+    template: 'ORDER_CONFIRMATION_EMAIL' as TemplateUseCase,
+    post_state: 'SUBMIT_NOTIFIED' as OrderState,
+  },
+  [OrderState.COMPLETED]: {
+    action: 'complete',
+    template: 'ORDER_COMPLETION_EMAIL' as TemplateUseCase,
+    post_state: 'COMPLETION_NOTIFIED' as OrderState,
+  },
+  [OrderState.CANCELLED]: {
+    action: 'cancel',
+    template: 'ORDER_CANCELATION_EMAIL' as TemplateUseCase,
+    post_state: 'CANCELATION_NOTIFIED' as OrderState,
+  },
+  [OrderState.WITHDRAWN]: {
+    action: 'withdraw',
+    template: 'ORDER_WITHDRAWN_EMAIL' as TemplateUseCase,
+    post_state: 'WITHDRAW_NOTIFIED' as OrderState,
+  },
+};
 
 export const filterTax = (
   tax: Tax,
