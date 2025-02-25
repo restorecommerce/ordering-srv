@@ -103,7 +103,7 @@ const mainMeta = {
 
 const subjects: { [key: string]: Subject } = {
   root_tech_user: {
-    id: "root_tech_user",
+    id: "root-tech-user",
     token: "1a4c6789-6435-487a-9308-64d06384acf9"
   },
   superadmin: {
@@ -609,10 +609,10 @@ const invalidOrders: { [key: string]: OrderList } = {
 const users: { [key: string]: UserResponse } = {
   root_tech_user: {
     payload: {
-      id: 'root_tech_user',
+      id: 'root-tech-user',
       role_associations: [
         {
-          id: 'root_tech_user-1-super-administrator-r-id',
+          id: 'root-tech-user-1-super-administrator-r-id',
           role: 'superadministrator-r-id',
           attributes: [],
         },
