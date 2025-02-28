@@ -1512,7 +1512,6 @@ export class OrderingService
       try {
         if (this.fulfillment_service) {
           this.logger?.debug('Evaluate fulfillment on submit...');
-          response.fulfillments = [];
           const fulfillment_map: Record<string, FulfillmentResponse> = {};
           await this._evaluateFulfillment(
             {
@@ -1534,13 +1533,12 @@ export class OrderingService
             r => {
               r.items?.forEach(
                 fulfillment => {
-                  const id = fulfillment.payload?.references?.[0]?.instance_id
-                    ?? fulfillment.status?.id;
+                  const id = fulfillment.payload?.references?.[0]?.instance_id;
                   const order = response_map[id];
                   if (order && fulfillment.status?.code !== 200) {
                     order.status = fulfillment.status;
                   }
-                  fulfillment_map[id] =fulfillment;
+                  fulfillment_map[id] = fulfillment;
                 }
               );
 
@@ -1559,7 +1557,7 @@ export class OrderingService
               throw error;
             }
           ).finally(
-            () => response.fulfillments.push(...Object.values(fulfillment_map))
+            () => response.fulfillments = Object.values(fulfillment_map)
           );
           
           this.logger?.debug('Create fulfillment on submit...');
@@ -1583,7 +1581,7 @@ export class OrderingService
             r => {
               r.items?.forEach(
                 fulfillment => {
-                  const id = fulfillment.payload?.references?.[0]?.instance_id ?? fulfillment.status?.id;
+                  const id = fulfillment.payload?.references?.[0]?.instance_id;
                   const order = response_map[id];
                   if (order && fulfillment.status?.code !== 200) {
                     order.status = fulfillment.status;
@@ -1608,7 +1606,7 @@ export class OrderingService
               throw error;
             }
           ).finally(
-            () => response.fulfillments.push(...Object.values(fulfillment_map))
+            () => response.fulfillments = Object.values(fulfillment_map)
           );
         }
 
