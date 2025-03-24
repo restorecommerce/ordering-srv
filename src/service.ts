@@ -1067,6 +1067,7 @@ export class OrderingService
               const gross = new BigNumber(
                 unit_price?.sale ? unit_price?.sale_price ?? 0 : unit_price?.regular_price ?? 0
               ).multipliedBy(item.quantity ?? 0);
+              item.unit_price = unit_price;
               item.amount = calcAmount(
                 gross, taxes, shop_country,
                 billing_country, currency,
