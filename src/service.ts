@@ -28,7 +28,6 @@ import {
 import { Topic } from '@restorecommerce/kafka-client';
 import {
   OrderList,
-  OrderResponse,
   FulfillmentRequestList,
   Order,
   OrderState,
@@ -66,7 +65,6 @@ import {
   FulfillmentListResponse,
   FulfillmentResponse,
   Packaging,
-  Parcel,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment.js';
 import {
   FulfillmentProductServiceDefinition,
@@ -84,7 +82,6 @@ import {
   Filter_ValueType,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import {
-  Status,
   StatusListResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/status.js';
 import {
@@ -115,9 +112,9 @@ import {
   SettingServiceDefinition
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/setting.js';
 import {
-  Payload,
-  RenderRequest,
-  RenderResponse,
+  RenderRequest_Template,
+  RenderRequestList,
+  RenderResponseList,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/rendering.js';
 import {
   ManufacturerServiceDefinition
@@ -247,6 +244,10 @@ export class OrderingService
       code: 500,
       message: '{entity} {id}: {error}!',
     },
+    NO_TEMPLATE_BODY: {
+      code: 500,
+      message: 'No body defined in template {id}!',
+    },
   };
 
   protected readonly operation_status_codes = {
@@ -297,7 +298,7 @@ export class OrderingService
   protected readonly awaits_render_result = new ResourceAwaitQueue<string[]>;
   protected readonly default_setting: ResolvedSetting;
   protected readonly default_templates: Template[] = [];
-  protected readonly kafka_timeout = 15000;
+  protected readonly kafka_timeout: number = 15000;
   protected readonly contact_point_type_ids = {
     legal: 'legal',
     shipping: 'shipping',
@@ -355,7 +356,7 @@ export class OrderingService
     
     this.emitters = cfg.get('events:emitters');
     this.tech_user = cfg.get('authorization:techUser');
-    this.kafka_timeout = cfg.get('events:kafka:timeout') ?? 5000;
+    this.kafka_timeout = cfg.get<number>('events:kafka:timeout') ?? 5000;
 
     // optional Fulfillment
     const fulfillment_cfg = cfg.get('client:fulfillment');
@@ -1243,6 +1244,12 @@ export class OrderingService
         items: items.map(
           item => {
             item.payload.order_state = state;
+            item.payload.history ??= [];
+            item.payload.history.push({
+              code: StateMap[state].code,
+              message: StateMap[state].message,
+              timestamp: new Date(),
+            });
             return item.payload;
           }
         ),
@@ -1264,11 +1271,7 @@ export class OrderingService
     
     if (this.notification_service) {
       this.logger?.debug(`Send notifications for Order State ${state}...`);
-      const default_templates = await this.loadDefaultTemplates().then(
-        df => df.filter(
-          template => template.use_case === StateMap[state].template
-        )
-      );
+      const default_templates = await this.loadDefaultTemplates();
       const notified = await Promise.all(response.items?.filter(
         item => {
           const setting = settings.get(item.payload?.id);
@@ -1283,7 +1286,7 @@ export class OrderingService
               item.payload,
               aggregation,
               render_id,
-              StateMap[state].template,
+              StateMap[state].templates,
               default_templates,
               subject,
             ).then(
@@ -1300,15 +1303,10 @@ export class OrderingService
                   title,
                   context,
                 );
-                if (status.code === 200) {
-                  item.payload.order_state = StateMap[state].post_state;
-                }
-                else {
-                  item.status = {
-                    id: item.payload?.id,
-                    ...status
-                  };
-                }
+                item.status = {
+                  id: item.payload?.id,
+                  ...status
+                };
                 return item;
               }
             );
@@ -1333,7 +1331,15 @@ export class OrderingService
               }
             }
           ).map(
-            item => item.payload
+            item => {
+              item.payload.history ??= [];
+              item.payload.history.push({
+                code: 200,
+                message: 'Order state notified',
+                timestamp: new Date(),
+              });
+              return item.payload;
+            }
           ),
           total_count: notified.length,
           subject
@@ -1934,6 +1940,13 @@ export class OrderingService
       return this.catchOperationError<OrderListResponse>(e);
     }
   }
+
+  public async notify(
+    request: OrderIdList,
+    contect?: CallContext,
+  ): Promise<StatusListResponse> {
+    throw new Error('Not Implemented!');
+  };
 
   @resolves_subject()
   @access_controlled_function({
@@ -2640,7 +2653,6 @@ export class OrderingService
       }
     ) ?? [];
   }
-  
 
   private async doInvoice(
     action: (request: InvoiceList, context?: CallContext) => Promise<InvoiceListResponse>,
@@ -2812,9 +2824,9 @@ export class OrderingService
     }
   };
 
-  protected async fetchFile(url: string, subject?: Subject): Promise<string> {
+  protected async fetchFile(url: string, subject?: Subject): Promise<Buffer> {
     if (url?.startsWith('file://')) {
-      return fs.readFileSync(url.slice(7)).toString();
+      return fs.readFileSync(url.slice(7));
     }
     else if (url?.startsWith('http')) {
       return fetch(
@@ -2824,7 +2836,11 @@ export class OrderingService
             Authorization: `Bearer ${subject.token}`
           }
         } : undefined
-      ).then(resp => resp.text())
+      ).then(
+        resp => resp.text()
+      ).then(
+        text => Buffer.from(text)
+      )
     }
     else {
       throw createStatusCode(
@@ -2843,18 +2859,18 @@ export class OrderingService
     subject?: Subject,
   ) {
     const locale = locales?.find(
-      a => template.localization?.some(
-        b => b.local_codes?.includes(a)
+      a => template.localizations?.some(
+        b => b.locales?.includes(a)
       )
     ) ?? 'en';
-    const L = template.localization?.find(
-      a => a.local_codes?.includes(locale)
+    const L = template.localizations?.find(
+      a => a.locales?.includes(locale)
     );
     const url = L?.l10n?.url;
     const l10n = url ? await this.fetchFile(url, subject).then(
       text => {
         if (L.l10n.content_type === 'application/json') {
-          return JSON.parse(text);
+          return JSON.parse(text.toString());
         }
         else if (L.l10n.content_type === 'text/csv') {
           return CSV(text, {
@@ -2882,6 +2898,100 @@ export class OrderingService
     ) : undefined;
   
     return l10n;
+  }
+
+  protected async emitRenderRequest(
+    item: Order,
+    aggregation: AggregatedOrderListResponse,
+    render_id: string,
+    use_cases: (TemplateUseCase | string)[],
+    default_templates?: Template[],
+    subject?: Subject,
+  ) {
+    const shop = aggregation.shops.get(item.shop_id);
+    const customer = aggregation.customers.get(item.customer_id);
+    const setting = this.resolveSettings(
+      aggregation.settings.get(
+        customer.setting_id
+      ),
+      aggregation.settings.get(
+        shop.setting_id
+      ),
+    );
+    const locales = [
+      ...(setting?.customer_locales ?? []),
+      ...(setting?.shop_locales ?? []),
+    ];
+    const templates = aggregation.templates?.getMany(
+      shop.template_ids
+    )?.filter(
+      template => use_cases?.includes(template.use_case)
+    ).sort(
+      (a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0)
+    ) ?? [];
+    default_templates = default_templates?.filter(
+      template => use_cases?.includes(template.use_case)
+    ).sort(
+      (a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0)
+    ) ?? []
+
+    if (templates.length === 0 && default_templates?.length > 0) {
+      templates.push(...default_templates);
+    }
+    else {
+      throw createOperationStatusCode(
+        this.operation_status_codes.NO_TEMPLATES
+      );
+    }
+    
+    const bodies: RenderRequest_Template[][]  = await Promise.all(
+      templates.map(
+        async template => await Promise.all(template.bodies?.map(
+          async (body, i) => ({
+            id: crypto.randomUUID() as string,
+            body: body?.url ? await this.fetchFile(
+              body.url, subject
+            ) : undefined,
+            layout: template.layouts?.[i]?.url ? await this.fetchFile(
+              template.layouts?.[i]?.url, subject
+            ) : undefined
+          })
+        ) ?? throwStatusCode<RenderRequest_Template[]>(
+          item.id,
+          "Template",
+          this.status_codes.NO_TEMPLATE_BODY,
+          template.id,
+        ))
+      )
+    );
+    const l10n = await Promise.all(
+      templates.map(
+        template => this.fetchLocalization(
+          template, locales, subject
+        )
+      )
+    );
+
+    const render_request: RenderRequestList = {
+      id: render_id,
+      items: templates.map(
+        (template, i) => ({
+          content_type: 'text/html',
+          data: packRenderData(aggregation, item),
+          templates: bodies[i],
+          style_url: template.styles?.find(s => s.url).url,
+          options: l10n[i] ? marshallProtobufAny({
+            locale: l10n[i]._locale,
+            texts: l10n[i]
+          }) : undefined
+        })
+      ),
+    }
+
+    return this.renderingTopic.emit(
+      'renderRequest',
+      render_request,
+    );
   }
 
   protected async emitRenderRequest(
@@ -2924,17 +3034,18 @@ export class OrderingService
 
     const bodies = await Promise.all(
       templates.map(
-        template => template.body?.url ? this.fetchFile(
-          template.body.url, subject
-        ) : undefined
-      )
-    );
-    const layouts = await Promise.all(
-      templates.map(
-        template => template.layout?.url ? this.fetchFile(
-          template.layout.url, subject
-        ) : undefined
-      )
+        async template => await Promise.all(template.bodies?.map(
+          async (body, i) => ({
+            id: crypto.randomUUID() as string,
+            body: body?.url ? await this.fetchFile(
+              body.url, subject
+            ) : undefined,
+            layout: template.layouts?.[i]?.url ? await this.fetchFile(
+              template.layouts?.[i]?.url, subject
+            ) : undefined
+          })
+        )
+      ))
     );
     const l10n = await Promise.all(
       templates.map(
@@ -2944,61 +3055,51 @@ export class OrderingService
       )
     );
 
-    const payloads: Payload[] = templates.map(
-      (template, i) => ({
-        content_type: 'text/html',
-        data: packRenderData(aggregation, item),
-        templates: marshallProtobufAny({
-          [i]: {
-            body: bodies[i],
-            layout: layouts[i],
-          },
-        }),
-        style_url: template.styles?.find(s => s.url).url,
-        options: l10n[i] ? marshallProtobufAny({
-          locale: l10n[i]._locale,
-          texts: l10n[i]
-        }) : undefined
-      })
-    );
+    const render_request: RenderRequestList = {
+      id: render_id,
+      items: templates.map(
+        (template, i) => ({
+          content_type: 'text/html',
+          data: packRenderData(aggregation, item),
+          templates: bodies[i],
+          style_url: template.styles?.find(s => s.url).url,
+          options: l10n[i] ? marshallProtobufAny({
+            locale: l10n[i]._locale,
+            texts: l10n[i]
+          }) : undefined
+        })
+      ),
+    }
 
     return this.renderingTopic.emit(
       'renderRequest',
-      {
-        id: render_id,
-        payloads,
-      } as RenderRequest
+      render_request,
     );
   }
 
   public async handleRenderResponse(
-    response: RenderResponse,
-    context?: CallContext,
+    response: RenderResponseList
   ) {
     try {
       const [entity] = response.id.split('/');
       if (entity !== 'order') return;
-      const content = response.responses.map(
-        r => JSON.parse(r.value.toString())
-      );
-      const errors = content.filter(
-        c => c.error
-      ).map(
-        c => c.error
-      );
 
-      if (errors?.length) {
-        const status: Status = {
-          code: 500,
-          message: errors.join('\n'),
-        };
+      if (response.operation_status?.code !== 200) {
+        this.awaits_render_result.reject(response.id, response.operation_status);
+      }
 
-        this.awaits_render_result.reject(response.id, status);
+      const error = response.items.find(
+        item => item.status?.code !== 200
+      );
+      if (error) {
+        this.awaits_render_result.reject(response.id, error);
       }
       else {
-        const bodies = content.map(
-          (c, i) => c[i]
-        ) as string[];
+        const bodies = response.items.flatMap(
+          item => item.payload.bodies.map(
+            item => item.body.toString(item.charset as BufferEncoding)
+          )
+        );
         this.awaits_render_result.resolve(response.id, bodies);
       }
     }

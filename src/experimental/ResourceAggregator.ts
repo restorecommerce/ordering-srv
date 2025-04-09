@@ -90,7 +90,7 @@ export class ResourceAggregator {
       filters: [{
         filters: [
           {
-            field: 'id',
+            field: '_key',
             operation: Filter_Operation.in,
             value: JSON.stringify(ids),
             type: Filter_ValueType.ARRAY,

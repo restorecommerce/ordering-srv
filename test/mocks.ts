@@ -48,7 +48,6 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/customer.js';
 import {
   FulfillmentListResponse,
-  FulfillmentResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/fulfillment.js';
 import {
   OperationStatus,
@@ -81,7 +80,7 @@ import {
 
 type Address = ShippingAddress & BillingAddress;
 
-const mainMeta = {
+const meta = {
   modifiedBy: 'SYSTEM',
   acls: [],
   created: new Date(),
@@ -206,7 +205,7 @@ const currencies: CurrencyListResponse = {
       name: 'EUR',
       precision: 2,
       symbol: '€',
-      meta: mainMeta,
+      meta,
     },
     status,
   }],
@@ -652,7 +651,7 @@ const users: { [key: string]: UserResponse } = {
           token: 'superadmin',
         }
       ],
-      meta: mainMeta,
+      meta,
     },
     status,
   },
@@ -692,7 +691,7 @@ const users: { [key: string]: UserResponse } = {
           token: 'admin',
         }
       ],
-      meta: mainMeta,
+      meta,
     },
     status,
   },

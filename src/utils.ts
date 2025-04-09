@@ -98,7 +98,7 @@ import {
   TemplateUseCase,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/template.js';
 import {
-  Payload_Strategy
+  RenderRequest_Strategy
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/rendering.js';
 import {
   Any
@@ -223,7 +223,7 @@ export const DefaultSetting = {
   shop_invoice_send_disabled: false,
   shop_order_error_cleanup_disabled: false,
   shop_email_render_options: undefined as any,
-  shop_email_render_strategy: Payload_Strategy.INLINE,
+  shop_email_render_strategy: RenderRequest_Strategy.INLINE,
   shop_email_provider: undefined as string,
   shop_email_cc: undefined as string[],
   shop_email_bcc: undefined as string[],
@@ -268,36 +268,72 @@ export const parseSetting = (key: string, value: string) => {
 
 export type StateMapItem = {
   action: string,
-  template: TemplateUseCase,
-  post_state: OrderState,
+  code: number,
+  message: string,
+  templates: (TemplateUseCase | string)[],
 };
 
 export const StateMap: Record<OrderState, StateMapItem> = {
   [OrderState.UNRECOGNIZED]: null,
   [OrderState.PENDING]: {
     action: 'pending',
-    template: 'ORDER_PENDING_EMAIL' as TemplateUseCase,
-    post_state: 'PENDING_NOTIFIED' as OrderState,
+    code: 200,
+    message: 'Order pending',
+    templates: [
+      TemplateUseCase.ORDER_PRENDING_EMAIL,
+      'ORDER_PENDING_EMAIL_SUBJECT',
+      'ORDER_PENDING_EMAIL_BODY',
+    ],
   },
   [OrderState.SUBMITTED]: {
     action: 'submit',
-    template: 'ORDER_CONFIRMATION_EMAIL' as TemplateUseCase,
-    post_state: 'SUBMIT_NOTIFIED' as OrderState,
+    code: 200,
+    message: 'Order submitted',
+    templates: [
+      TemplateUseCase.ORDER_SUBMITTED_EMAIL,
+      'ORDER_SUBMITTED_EMAIL_SUBJECT',
+      'ORDER_SUBMITTED_EMAIL_BODY',
+    ]
   },
   [OrderState.COMPLETED]: {
     action: 'complete',
-    template: 'ORDER_COMPLETION_EMAIL' as TemplateUseCase,
-    post_state: 'COMPLETION_NOTIFIED' as OrderState,
+    code: 200,
+    message: 'Order completed',
+    templates: [
+      TemplateUseCase.ORDER_COMPLETION_EMAIL,
+      'ORDER_COMPLETION_EMAIL_SUBJECT',
+      'ORDER_COMPLETION_EMAIL_BODY',
+    ]
   },
   [OrderState.CANCELLED]: {
     action: 'cancel',
-    template: 'ORDER_CANCELATION_EMAIL' as TemplateUseCase,
-    post_state: 'CANCELATION_NOTIFIED' as OrderState,
+    code: 200,
+    message: 'Order cancelled',
+    templates: [
+      TemplateUseCase.ORDER_CANCELATION_EMAIL,
+      'ORDER_CANCELATION_EMAIL_SUBJECT',
+      'ORDER_CANCELATION_EMAIL_BODY',
+    ]
   },
   [OrderState.WITHDRAWN]: {
     action: 'withdraw',
-    template: 'ORDER_WITHDRAWN_EMAIL' as TemplateUseCase,
-    post_state: 'WITHDRAW_NOTIFIED' as OrderState,
+    code: 200,
+    message: 'Order withdrawn',
+    templates: [
+      TemplateUseCase.ORDER_WITHDRAWN_EMAIL,
+      'ORDER_WITHDRAWN_EMAIL_SUBJECT',
+      'ORDER_WITHDRAWN_EMAIL_BODY',
+    ]
+  },
+  [OrderState.INVALID]: {
+    action: 'invalid',
+    code: 400,
+    message: 'Order invalid',
+    templates: [
+      TemplateUseCase.ORDER_INVALID_EMAIL,
+      'ORDER_INVALID_EMAIL_SUBJECT',
+      'ORDER_INVALID_EMAIL_BODY'
+    ]
   },
 };
 

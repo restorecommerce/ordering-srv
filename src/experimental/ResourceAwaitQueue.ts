@@ -12,8 +12,9 @@ export class ResourceAwaitQueue<T, K = string> extends Map<K, ResourceAwaitMutex
       value.reject(new Error('Resource in use!'));
     }
     else {
-      return super.set(key, value);
+      super.set(key, value);
     }
+    return this;
   }
 
   public async await(key: K, timeout?: number) {

@@ -42,7 +42,8 @@
   "fieldHandlers": {
     "timeStampFields": [
       "meta.created",
-      "meta.modified"
+      "meta.modified",
+      "history.[0].timestamp"
     ]
   },
   "events": {
@@ -142,10 +143,10 @@
         "messageObject": "io.restorecommerce.commandinterface.CommandResponse"
       },
       "renderRequest": {
-        "messageObject": "io.restorecommerce.rendering.RenderRequest"
+        "messageObject": "io.restorecommerce.rendering.RenderRequestList"
       },
       "renderResponse": {
-        "messageObject": "io.restorecommerce.rendering.RenderResponse"
+        "messageObject": "io.restorecommerce.rendering.RenderResponseList"
       },
       "sendEmail": {
         "messageObject": "io.restorecommerce.notification_req.NotificationReq"
@@ -421,15 +422,15 @@
     },
     "Templates": [
       {
-        "body": {
+        "bodies": [{
           "url": "file://./templates/order_confirmation_subject.hbs"
-        },
-        "layout": {
+        }],
+        "layouts": [{
           "url": "file://./templates/order_layout.hbs"
-        },
-        "localization": [
+        }],
+        "localizations": [
           {
-            "local_codes": ["en"],
+            "locales": ["en"],
             "l10n": {
               "url": "file://./templates/l10n.csv",
               "content_type": "text/csv"
@@ -437,18 +438,18 @@
           }
         ],
         "ordinal": 0,
-        "use_case": "ORDER_CONFIRMATION_EMAIL"
+        "use_case": "ORDER_SUBMITTED_EMAIL"
       },
       {
-        "body": {
+        "bodies": [{
           "url": "file://./templates/order_confirmation_body.hbs"
-        },
-        "layout": {
+        }],
+        "layouts": [{
           "url": "file://./templates/order_layout.hbs"
-        },
-        "localization": [
+        }],
+        "localizations": [
           {
-            "local_codes": ["en"],
+            "locales": ["en"],
             "l10n": {
               "url": "file://./templates/l10n.csv",
               "content_type": "text/csv"
@@ -456,7 +457,7 @@
           }
         ],
         "ordinal": 1,
-        "use_case": "ORDER_CONFIRMATION_EMAIL"
+        "use_case": "ORDER_SUBMITTED_EMAIL"
       }
     ]
   }

@@ -5,9 +5,7 @@ import { Client } from 'nice-grpc';
 import { createClient, createChannel, GrpcClientConfig } from '@restorecommerce/grpc-client';
 import { Events, Topic } from '@restorecommerce/kafka-client';
 import {
-  FulfillmentRequest,
   FulfillmentRequestList,
-  Order,
   OrderServiceDefinition,
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order.js';
 import {
