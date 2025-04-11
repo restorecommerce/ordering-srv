@@ -239,5 +239,10 @@
         }
       }
     }
+  },
+  "defaults": {
+    "Setting": {
+      "shop_order_notifications_disabled": true
+    }
   }
 }
