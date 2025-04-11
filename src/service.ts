@@ -1246,6 +1246,7 @@ export class OrderingService
             item.payload.order_state = state;
             item.payload.history ??= [];
             item.payload.history.push({
+              state,
               code: StateMap[state].code,
               message: StateMap[state].message,
               timestamp: new Date(),
@@ -1318,26 +1319,27 @@ export class OrderingService
           }
         }
       ));
+      this.logger.debug('Notification result', notified);
       await this.superUpdate(
         {
-          items: notified.filter(
-            item => {
-              if (item.status?.code === 200) {
-                return true;
-              }
-              else {
-                orders[item.payload?.id ?? item.status?.id].status = item.status;
-                return false;
-              }
-            }
-          ).map(
+          items: notified.map(
             item => {
               item.payload.history ??= [];
-              item.payload.history.push({
-                code: 200,
-                message: 'Order state notified',
-                timestamp: new Date(),
-              });
+              if (item.status?.code === 200) {
+                item.payload.history.push({
+                  state,
+                  code: 200,
+                  message: 'Notification sent.',
+                  timestamp: new Date(),
+                });
+              }
+              else {
+                item.payload.history.push({
+                  ...item.status,
+                  state: OrderState.INVALID,
+                  timestamp: new Date(),
+                });
+              }
               return item.payload;
             }
           ),
@@ -2963,89 +2965,6 @@ export class OrderingService
           template.id,
         ))
       )
-    );
-    const l10n = await Promise.all(
-      templates.map(
-        template => this.fetchLocalization(
-          template, locales, subject
-        )
-      )
-    );
-
-    const render_request: RenderRequestList = {
-      id: render_id,
-      items: templates.map(
-        (template, i) => ({
-          content_type: 'text/html',
-          data: packRenderData(aggregation, item),
-          templates: bodies[i],
-          style_url: template.styles?.find(s => s.url).url,
-          options: l10n[i] ? marshallProtobufAny({
-            locale: l10n[i]._locale,
-            texts: l10n[i]
-          }) : undefined
-        })
-      ),
-    }
-
-    return this.renderingTopic.emit(
-      'renderRequest',
-      render_request,
-    );
-  }
-
-  protected async emitRenderRequest(
-    item: Order,
-    aggregation: AggregatedOrderListResponse,
-    render_id: string,
-    use_case: TemplateUseCase | string,
-    default_templates?: Template[],
-    subject?: Subject,
-  ) {
-    const shop = aggregation.shops.get(item.shop_id);
-    const customer = aggregation.customers.get(item.customer_id);
-    const setting = this.resolveSettings(
-      aggregation.settings.get(
-        customer.setting_id
-      ),
-      aggregation.settings.get(
-        shop.setting_id
-      ),
-    );
-    const locales = [
-      ...(setting?.customer_locales ?? []),
-      ...(setting?.shop_locales ?? []),
-    ];
-    const templates = aggregation.templates?.getMany(
-      shop.template_ids
-    )?.filter(
-      template => template.use_case === use_case
-    ).sort(
-      (a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0)
-    ) ?? [];
-    if (templates.length === 0 && default_templates?.length > 0) {
-      templates.push(...default_templates);
-    }
-    else {
-      throw createOperationStatusCode(
-        this.operation_status_codes.NO_TEMPLATES
-      );
-    }
-
-    const bodies = await Promise.all(
-      templates.map(
-        async template => await Promise.all(template.bodies?.map(
-          async (body, i) => ({
-            id: crypto.randomUUID() as string,
-            body: body?.url ? await this.fetchFile(
-              body.url, subject
-            ) : undefined,
-            layout: template.layouts?.[i]?.url ? await this.fetchFile(
-              template.layouts?.[i]?.url, subject
-            ) : undefined
-          })
-        )
-      ))
     );
     const l10n = await Promise.all(
       templates.map(
