@@ -163,9 +163,61 @@ import {
   StateMap,
 } from './utils.js';
 
-
 const CREATE_FULFILLMENT = 'createFulfillment';
 const CREATE_INVOICE = 'createInvoice';
+
+export const MetaDataInjector = async <T extends OrderList>(
+  self: any,
+  request: T,
+  ...args: any
+): Promise<T> => {
+  const urns = self.cfg.get('authorization:urns');
+  const ids = request.items?.map(
+    (item) => item.id
+  );
+  const meta_map = ids.length ? await self.get(
+    ids,
+    request.subject,
+  ).then(
+    (response: OrderListResponse) => new Map(response.items?.map(
+      item => {
+        if (item.payload.order_state && item.payload.order_state !== OrderState.PENDING) {
+          throw createOperationStatusCode(
+            self.operation_status_codes.CONFLICT,
+            'order',
+          );
+        }
+        return [item.payload.id, item.payload.meta];
+      }
+    ))
+  ) : undefined;
+
+  request.items?.forEach((item) => {
+    item.meta ??= meta_map?.get(item.id) ?? {};
+    item.meta.modified ??= new Date();
+    item.meta.modified_by ??= request.subject?.id;
+    item.meta.owners ??= [
+      request.subject?.scope ? {
+        id: urns.ownerIndicatoryEntity,
+        value: urns.organization,
+        attributes: [{
+          id: urns.ownerInstance,
+          value: request.subject.scope
+        }],
+      } : undefined,
+      request.subject?.id ? {
+        id: urns.ownerIndicatoryEntity,
+        value: urns.user,
+        attributes: [{
+          id: urns.ownerInstance,
+          value: request.subject.id
+        }],
+      } : undefined,
+    ].filter(i => i);
+    item.id ??= randomUUID().replace(/-/g, '');
+  });
+  return request;
+};
 
 export class OrderingService
   extends AccessControlledServiceBase<OrderListResponse, OrderList>
@@ -248,6 +300,10 @@ export class OrderingService
       code: 500,
       message: 'No body defined in template {id}!',
     },
+    OUT_OF_STOCK: {
+      code: 400,
+      message: 'The following {entity} are out of stock {id}!',
+    },
   };
 
   protected readonly operation_status_codes = {
@@ -291,10 +347,11 @@ export class OrderingService
 
   protected readonly tech_user: Subject;
   protected readonly emitters: Record<string, string>;
+  protected readonly product_service?: Client<ProductServiceDefinition>;
+  protected readonly notification_service?: Client<NotificationReqServiceDefinition>;
   protected readonly fulfillment_service?: Client<FulfillmentServiceDefinition>;
   protected readonly fulfillment_product_service?: Client<FulfillmentProductServiceDefinition>;
   protected readonly invoice_service?: Client<InvoiceServiceDefinition>;
-  protected readonly notification_service: Client<NotificationReqServiceDefinition>;
   protected readonly awaits_render_result = new ResourceAwaitQueue<string[]>;
   protected readonly default_setting: ResolvedSetting;
   protected readonly default_templates: Template[] = [];
@@ -357,6 +414,24 @@ export class OrderingService
     this.emitters = cfg.get('events:emitters');
     this.tech_user = cfg.get('authorization:techUser');
     this.kafka_timeout = cfg.get<number>('events:kafka:timeout') ?? 5000;
+
+    const product_cfg = cfg.get('client:product');
+    if (product_cfg.disabled?.toString() === 'true') {
+      this.logger?.info('Notification-srv disabled!');
+    }
+    else if (product_cfg) {
+      this.product_service = createClient(
+        {
+          ...product_cfg,
+          logger
+        } as GrpcClientConfig,
+        ProductServiceDefinition,
+        createChannel(product_cfg.address)
+      );
+    }
+    else {
+      this.logger?.warn('product config is missing!');
+    }
 
     // optional Fulfillment
     const fulfillment_cfg = cfg.get('client:fulfillment');
@@ -994,6 +1069,9 @@ export class OrderingService
 
     const promises = aggregation.items?.map(async (order) => {
       try {
+        if (order.status?.code && order.status.code !== 200) {
+          return order;
+        }
         const customer = aggregation.customers.get(order.payload.customer_id);
         const billing_country = aggregation.countries.get(
           order.payload?.billing_address?.address?.country_id
@@ -1151,7 +1229,7 @@ export class OrderingService
           );
         };
 
-        order.status = createStatusCode(
+        order.status ??= createStatusCode(
           order?.payload.id,
           'Order',
           this.status_codes.OK,
@@ -1211,6 +1289,45 @@ export class OrderingService
     }
 
     return this.default_templates;
+  }
+
+  protected claimPoducts(
+    aggregation?: AggregatedOrderListResponse
+  ) {
+    aggregation.items?.forEach(
+      item => {
+        const out_of_stock = item.payload.items?.filter(
+          position => { 
+            const main = aggregation.products.get(position.product_id);
+            const items = main.bundle?.products ?? [{ ...position, quantity: 1 }];
+            return items.some(
+              item => {
+                const product = aggregation.products.get(item.product_id).product;
+                const nature = product?.physical ?? product?.virtual ?? product?.service;
+                const variant = nature.variants.find(variant => variant.id === item.variant_id);
+                const remains = variant.stock_level - position.quantity * item.quantity;
+                if (variant.stock_level && remains >= 0) {
+                  variant.stock_level = remains;
+                  return false;
+                }
+                else {
+                  return true;
+                }
+              }
+            );
+          }
+        );
+
+        if (out_of_stock?.length) {
+          item.status = createStatusCode(
+            item.payload?.id ?? item.status?.id,
+            'ProductVariants',
+            this.status_codes.OUT_OF_STOCK,
+            out_of_stock.map(item => `${item.product_id}/${item.variant_id}`).join(', ')
+          );
+        }
+      }
+    );
   }
 
   public async updateState(
@@ -1396,7 +1513,7 @@ export class OrderingService
   }
 
   @resolves_subject()
-  @injects_meta_data()
+  @injects_meta_data(MetaDataInjector)
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -1419,6 +1536,7 @@ export class OrderingService
         request.subject,
         context,
       );
+      this.claimPoducts(aggregation);
       const orders = await this.resolveOrderListResponse(
         aggregation,
         request.subject,
@@ -1432,7 +1550,7 @@ export class OrderingService
   }
 
   @resolves_subject()
-  @injects_meta_data()
+  @injects_meta_data(MetaDataInjector)
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -1446,41 +1564,6 @@ export class OrderingService
     context?: CallContext
   ): Promise<OrderSubmitListResponse> {
     try {
-      await this.superRead(
-        {
-          filters: [
-            {
-              filters: [
-                {
-                  field: '_key',
-                  operation: Filter_Operation.in,
-                  value: JSON.stringify(request.items?.map(item => item.id)),
-                  type: Filter_ValueType.ARRAY,
-                },
-                {
-                  field: 'order_state',
-                  operation: Filter_Operation.neq,
-                  value: OrderState.PENDING,
-                  type: Filter_ValueType.STRING,
-                },
-              ],
-              operator: FilterOp_Operator.and,
-            }
-          ],
-          limit: 1,
-        },
-        context,
-      ).then(
-        response => {
-          if (response.items?.length) {
-            throw createOperationStatusCode(
-              this.operation_status_codes.CONFLICT,
-              'order',
-            );
-          }
-        }
-      );
-
       const response_map: OrderMap = {};
       const aggregation = await this.aggregate(
         {
@@ -1491,6 +1574,7 @@ export class OrderingService
         request.subject,
         context,
       );
+      this.claimPoducts(aggregation);
 
       const settings = await this.aggregateSettings(
         aggregation
@@ -1801,6 +1885,15 @@ export class OrderingService
             );
           }
         }
+
+        await this.product_service.update(
+          {
+            items: aggregation.products.all,
+            total_count: aggregation.products.all.length,
+            subject: this.tech_user ?? request.subject,
+          },
+          context,
+        );
 
         await this.updateState(
           response_map,

@@ -108,10 +108,7 @@ describe('The Ordering Service:', () => {
         200,
         '\n' + JSON.stringify(response, null, 2),
       );
-      should.ok(
-        !response.items?.some(item => item.status?.code !== 200),
-        'response.items[*].status.code expected all to be 200\n' + JSON.stringify(response, null, 2),
-      );
+      response.items!.should.matchEvery(item => item.status?.code === 200);
     });
 
     it('should have received an order create event', async function() {
@@ -152,10 +149,7 @@ describe('The Ordering Service:', () => {
         response.totalCount,
         ids.length
       )
-      should.ok(
-        !response.items?.some(item => item.status?.code !== 200),
-        'response.items[*].status.code expected all to be 200',
-      );
+      response.items!.should.matchEvery(item => item.status?.code === 200);
     });
   }
 
@@ -168,10 +162,7 @@ describe('The Ordering Service:', () => {
         200,
         '\n' + JSON.stringify(response, null, 2),
       );
-      should.ok(
-        !response.items?.some(item => item.status?.code !== 200),
-        'response.items[*].status.code expected all to be 200',
-      );
+      response.items!.should.matchEvery(item => item.status?.code === 200);
     });
 
     it('should have received an order update event', async function() {
@@ -189,10 +180,7 @@ describe('The Ordering Service:', () => {
         200,
         '\n' + JSON.stringify(response, null, 2),
       );
-      should.ok(
-        !response.items?.some(item => item.status?.code !== 200),
-        'response.items[*].status.code expected all to be 200',
-      );
+      response.items!.should.matchEvery(item => item.status?.code === 200);
     });
   }
 
@@ -205,10 +193,7 @@ describe('The Ordering Service:', () => {
         200,
         'response.operationStatus?.code expected NOT to be 200'
       );
-      should.ok(
-        !response.items?.some(item => item.status?.code === 200),
-        'response.items[*].status.code expected all NOT to be 200',
-      );
+      response.items?.should.matchAny(item => item.status?.code !== 200);
     });
   }
 
@@ -221,10 +206,7 @@ describe('The Ordering Service:', () => {
         200,
         '\n' + JSON.stringify(response, null, 2),
       );
-      should.ok(
-        !response.orders?.some(item => item.status?.code !== 200),
-        'response.orders[*].status.code expected all to be 200',
-      );
+      response.orders?.should.matchEvery(item => item.status?.code === 200);
       should.exist(response.orders, 'expect orders to exist');
       should.exist(response.fulfillments, 'expect fulfillments to exist');
       should.exist(response.invoices, 'expect invoices to exist');
@@ -245,10 +227,7 @@ describe('The Ordering Service:', () => {
         200,
         '\n' + JSON.stringify(response, null, 2),
       );
-      should.ok(
-        !response.orders?.some(item => item.status?.code === 200),
-        'response.orders[*].status.code expected all NOT to be 200',
-      );
+      response.orders?.should.matchAny(item => item.status?.code !== 200);
     });
   }
 
@@ -270,10 +249,7 @@ describe('The Ordering Service:', () => {
         200,
         '\n' + JSON.stringify(response, null, 2),
       );
-      should.ok(
-        !response.items?.some(item => item.status?.code !== 200),
-        'response.items[*].status.code expected all to be 200',
-      );
+      response.items!.should.matchEvery(item => item.status?.code === 200);
     });
   }
 
@@ -289,10 +265,7 @@ describe('The Ordering Service:', () => {
         200,
         '\n' + JSON.stringify(response, null, 2),
       );
-      should.ok(
-        !response.items?.some(item => item.status?.code !== 200),
-        'response.items[*].status.code expected all to be 200',
-      );
+      response.items!.should.matchEvery(item => item.status?.code === 200);
     });
   }
 
@@ -308,10 +281,7 @@ describe('The Ordering Service:', () => {
         200,
         '\n' + JSON.stringify(response, null, 2),
       );
-      should.ok(
-        !response.items?.some(item => item.status?.code !== 200),
-        'response.items[*].status.code expected all to be 200',
-      );
+      response.items!.should.matchEvery(item => item.status?.code === 200);
     });
   }
 
@@ -327,10 +297,7 @@ describe('The Ordering Service:', () => {
         200,
         '\n' + JSON.stringify(response, null, 2),
       );
-      should.ok(
-        !response?.status?.some(status => status?.code !== 200),
-        'response.status[*].code expected all to be 200',
-      );
+      response.status!.should.matchEvery(item => item?.code === 200);
     });
   }
 });

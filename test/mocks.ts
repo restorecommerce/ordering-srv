@@ -8,6 +8,7 @@ import {
   OrderState,
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/order.js';
 import { 
+  ProductList,
   ProductListResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/product.js';
 import {
@@ -77,6 +78,7 @@ import {
   getRedisInstance,
   logger
 } from './utils.js';
+import { DeleteRequest, DeleteResponse } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/resource_base.js';
 
 type Address = ShippingAddress & BillingAddress;
 
@@ -327,6 +329,7 @@ const products: ProductListResponse = {
               description: 'This is a physical product in red',
               images: [],
               files: [],
+              stockLevel: 300,
               properties: [
                 {
                   id: 'urn:product:property:color:main:name',
@@ -337,6 +340,27 @@ const products: ProductListResponse = {
                   id: 'urn:product:property:color:main:value',
                   value: '#FF0000',
                   unitCode: '#RGB',
+                }
+              ],
+              parentVariantId: '1',
+            },
+            {
+              id: '3',
+              name: 'Physical Product 1 Green (out of stock!)',
+              description: 'This is a physical product in green',
+              images: [],
+              files: [],
+              stockLevel: 2,
+              properties: [
+                {
+                  id: 'urn:product:property:color:main:name',
+                  value: 'red',
+                  unitCode: 'text',
+                },
+                {
+                  id: 'urn:product:property:color:main:value',
+                  value: '#00FF00',
+                  unitCode: '#GREEN',
                 }
               ],
               parentVariantId: '1',
@@ -404,6 +428,7 @@ const products: ProductListResponse = {
               description: 'This is a physical product in red',
               images: [],
               files: [],
+              stockLevel: 300,
               properties: [
                 {
                   id: 'urn:product:property:color:main:name',
@@ -553,9 +578,9 @@ const invalidOrders: { [key: string]: OrderList } = {
             quantity: 2,
           }
         ],
-        userId: 'userId_1',
-        customerId: 'invalid_customer_1',
-        shopId: 'invalid_shop_1',
+        userId: 'user_1',
+        customerId: 'customer_1',
+        shopId: 'shop_1',
         notificationEmail: 'user@test.spec',
         totalAmounts: [],
         billingAddress: residentialAddresses[0],
@@ -564,10 +589,14 @@ const invalidOrders: { [key: string]: OrderList } = {
       },
       {
         id: 'invalidOrder_2',
-        items: [],
-        userId: 'userId_1',
-        customerId: 'invalid_customer_1',
-        shopId: 'invalid_shop_1',
+        items: [{
+          productId: 'physicalProduct_1',
+          variantId: '3', // out of stock!
+          quantity: 4,
+        }],
+        userId: 'user_1',
+        customerId: 'customer_1',
+        shopId: 'shop_1',
         notificationEmail: 'user@test.spec',
         totalAmounts: [],
         orderState: OrderState.PENDING,
@@ -587,7 +616,7 @@ const invalidOrders: { [key: string]: OrderList } = {
             quantity: 4,
           }
         ],
-        userId: 'userId_1',
+        userId: 'user_1',
         customerId: 'invalid_customer_1',
         shopId: 'invalid_shop_1',
         notificationEmail: 'user@test.spec',
@@ -1026,12 +1055,25 @@ export const rules = {
       call: any,
       callback: (error: any, response: ProductListResponse) => void,
     ) => callback(null, products),
+    update: (
+      call: ProductList,
+      callback: (error: any, response: ProductListResponse) => void,
+    ) => callback(null, {
+      items: call.items?.map(
+        payload => ({
+          payload,
+          status: { code: 200 }
+        })
+      ),
+      totalCount: call.items?.length,
+      operationStatus: { code: 200 }
+    }),
   },
   currency: {
     read: (
       call: any,
       callback: (error: any, response: CurrencyListResponse) => void,
-    )=> callback(null, currencies),
+    ) => callback(null, currencies),
   },
   tax: {
     read: (
@@ -1105,6 +1147,12 @@ export const rules = {
       ),
       totalCount: solutions.items!.length,
       operationStatus
+    }),
+    delete: (
+      call: DeleteRequest,
+      callback: (error: any, response: DeleteResponse) => void,
+    ) => callback(null, {
+      operationStatus: { code: 200 }
     }),
   },
   invoice: {
