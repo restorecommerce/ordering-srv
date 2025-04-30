@@ -242,6 +242,7 @@
   },
   "defaults": {
     "Setting": {
+      "shop_order_overbooking_enabled": false,
       "shop_order_notifications_disabled": true
     }
   }
