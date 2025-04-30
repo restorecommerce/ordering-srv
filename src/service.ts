@@ -74,7 +74,6 @@ import {
   FulfillmentSolutionResponse,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment_product.js';
 import {
-  FilterOp_Operator,
   Filter_Operation
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/filter.js';
 import {
@@ -214,7 +213,7 @@ export const MetaDataInjector = async <T extends OrderList>(
         }],
       } : undefined,
     ].filter(i => i);
-    item.id ??= randomUUID().replace(/-/g, '');
+    item.id ??= randomUUID().replace('-', '');
   });
   return request;
 };
@@ -303,6 +302,10 @@ export class OrderingService
     OUT_OF_STOCK: {
       code: 400,
       message: 'The following {entity} are out of stock {id}!',
+    },
+    OVERBOOKED: {
+      code: 207,
+      message: 'Warning: The following {entity} are overbooked {id}!',
     },
   };
 
@@ -520,7 +523,7 @@ export class OrderingService
       context
     ).then(
       response => {
-        if (response.operation_status?.code === 200) {
+        if (response.operation_status?.code < 300) {
           return toObjectMap(response.items);
         }
         else {
@@ -821,6 +824,7 @@ export class OrderingService
   private mergeProductVariantRecursive(
     nature?: ProductNature,
     variant_id?: string,
+    product_id?: string,
   ): ProductVariant {
     const variant = nature?.templates?.find(
       v => v.id === variant_id
@@ -829,10 +833,10 @@ export class OrderingService
     );
     if (!variant) {
       throw createStatusCode(
-        undefined,
-        'Variant',
+        product_id,
+        'ProductVariant',
         this.status_codes.ITEM_NOT_FOUND,
-        variant_id,
+        `${product_id}:${variant_id}`,
       );
     }
     if (variant?.parent_variant_id) {
@@ -860,13 +864,15 @@ export class OrderingService
     if (main?.product?.physical) {
       const variant = this.mergeProductVariantRecursive(
         main.product.physical,
-        variant_id
+        variant_id,
+        product_id,
       );
       if (!variant) {
         throw createStatusCode(
-          variant_id,
-          'Product Variant',
+          product_id,
+          'ProductVariant',
           this.status_codes.ITEM_NOT_FOUND,
+          `${product_id}:${variant_id}`
         );
       }
 
@@ -943,7 +949,7 @@ export class OrderingService
       context,
     ).then(
       response => {
-        if (response.operation_status?.code === 200) {
+        if (response.operation_status?.code < 300) {
           return response.items;
         }
         else {
@@ -1069,7 +1075,7 @@ export class OrderingService
 
     const promises = aggregation.items?.map(async (order) => {
       try {
-        if (order.status?.code && order.status.code !== 200) {
+        if (order.status?.code && order.status.code >= 300) {
           return order;
         }
         const customer = aggregation.customers.get(order.payload.customer_id);
@@ -1244,7 +1250,7 @@ export class OrderingService
 
     const items = await Promise.all(promises);
     const operation_status = items.some(
-      a => a.status?.code !== 200
+      a => a.status?.code >= 300
     ) ? createOperationStatusCode(
         this.operation_status_codes.PARTIAL,
         'order',
@@ -1291,11 +1297,13 @@ export class OrderingService
     return this.default_templates;
   }
 
-  protected claimPoducts(
-    aggregation?: AggregatedOrderListResponse
+  protected evaluateProducts(
+    aggregation: AggregatedOrderListResponse,
+    settings?: ResolvedSettingMap,
   ) {
     aggregation.items?.forEach(
       item => {
+        const overbooking = settings?.get(item.payload?.id)?.shop_order_overbooking_enabled;
         const out_of_stock = item.payload.items?.filter(
           position => { 
             const main = aggregation.products.get(position.product_id);
@@ -1305,14 +1313,14 @@ export class OrderingService
                 const product = aggregation.products.get(item.product_id).product;
                 const nature = product?.physical ?? product?.virtual ?? product?.service;
                 const variant = nature.variants.find(variant => variant.id === item.variant_id);
-                const remains = variant.stock_level - position.quantity * item.quantity;
-                if (variant.stock_level && remains >= 0) {
-                  variant.stock_level = remains;
+                if (variant.stock_level === undefined) {
                   return false;
                 }
-                else {
-                  return true;
+                const remains = variant.stock_level - position.quantity * item.quantity;
+                if (overbooking || remains >= 0) {
+                  variant.stock_level = remains;
                 }
+                return remains < 0;
               }
             );
           }
@@ -1322,11 +1330,62 @@ export class OrderingService
           item.status = createStatusCode(
             item.payload?.id ?? item.status?.id,
             'ProductVariants',
-            this.status_codes.OUT_OF_STOCK,
-            out_of_stock.map(item => `${item.product_id}/${item.variant_id}`).join(', ')
+            overbooking ? this.status_codes.OVERBOOKED : this.status_codes.OUT_OF_STOCK,
+            out_of_stock.map(item => `${item.product_id}:${item.variant_id}`).join(', ')
           );
         }
       }
+    );
+  }
+
+  protected async claimProducts(
+    aggregation: AggregatedOrderListResponse,
+    subject?: Subject,
+    context?: CallContext,
+  ) {
+    const items: Product[] = aggregation.items?.flatMap(
+      item => item.payload.items?.flatMap(
+        position => { 
+          const main = aggregation.products.get(position.product_id);
+          const products = main.bundle?.products ?? [{ ...position, quantity: 1 }];
+          return products.map(
+            main => {
+              const product = aggregation.products.get(main.product_id).product;
+              const { physical, virtual, service } = product;
+              for(const [type, nature] of Object.entries({ physical, virtual, service })) {
+                const variant = nature?.variants?.find(v => v.id === position.variant_id);
+                if (!variant) continue;
+                return {
+                  id: main.product_id,
+                  product: {
+                    [type]: {
+                      variants: [{
+                        id: position.variant_id,
+                        stock_level: variant.stock_level,
+                      }]
+                    }
+                  }
+                } as Product
+              }
+              item.status = createStatusCode(
+                item.payload?.id,
+                'ProductVariant',
+                this.status_codes.ITEM_NOT_FOUND,
+                `${position.product_id}:${position.variant_id}`,
+              );
+            }
+          );
+        }
+      )
+    ).filter(item => item);
+
+    return await this.product_service.update(
+      {
+        items,
+        total_count: items.length,
+        subject,
+      },
+      context,
     );
   }
 
@@ -1340,9 +1399,8 @@ export class OrderingService
     upsert = false,
   ): Promise<OrderListResponse> {
     const items = Object.values(orders).filter(
-      item => item.status?.code === 200 && item.payload
+      item => item.status?.code < 300 && item.payload
     );
-
     aggregation ??= await this.aggregate(
       {
         items,
@@ -1350,7 +1408,6 @@ export class OrderingService
       subject,
       context,
     );
-
     settings ??= await this.aggregateSettings(
       aggregation
     );
@@ -1377,11 +1434,18 @@ export class OrderingService
       context
     ).then(
       response => {
-        if (response.operation_status?.code !== 200) {
+        if (response.operation_status?.code >= 300) {
           throw response.operation_status;
         }
         response.items?.forEach(
-          item => orders[item.payload?.id ?? item.status?.id] = item
+          item => {
+            const order = orders[item.payload?.id ?? item.status?.id];
+            order.payload = item.payload;
+            // not !(smaller) includes check for undefined!
+            if (!(order.status?.code > item.status?.code)) {
+              order.status = item.status;
+            }
+          }
         );
         return response;
       }
@@ -1393,7 +1457,7 @@ export class OrderingService
       const notified = await Promise.all(response.items?.filter(
         item => {
           const setting = settings.get(item.payload?.id);
-          return item.status?.code === 200
+          return item.status?.code < 300
             && !setting?.shop_order_notifications_disabled;
         }
       ).map(
@@ -1421,10 +1485,13 @@ export class OrderingService
                   title,
                   context,
                 );
-                item.status = {
-                  id: item.payload?.id,
-                  ...status
-                };
+                // not !(smaller) includes check for undefined!
+                if (!(item.status?.code > status?.code)) {
+                  item.status = {
+                    ...status,
+                    id: item.payload?.id,
+                  };
+                }
                 return item;
               }
             );
@@ -1442,7 +1509,7 @@ export class OrderingService
           items: notified.map(
             item => {
               item.payload.history ??= [];
-              if (item.status?.code === 200) {
+              if (item.status?.code < 300) {
                 item.payload.history.push({
                   state,
                   code: 200,
@@ -1466,11 +1533,18 @@ export class OrderingService
         context
       ).then(
         response => {
-          if (response.operation_status?.code !== 200) {
+          if (response.operation_status?.code >= 300) {
             throw response.operation_status;
           }
           response.items?.forEach(
-            item => orders[item.payload?.id ?? item.status?.id] = item
+            item => {
+              const order = orders[item.payload?.id ?? item.status?.id];
+              order.payload = item.payload;
+              // not !(smaller) includes check for undefined!
+              if (!(order.status?.code > item.status?.code)) {
+                order.status = item.status;
+              }
+            }
           );
           return response;
         }
@@ -1480,7 +1554,7 @@ export class OrderingService
     const results = Object.values(orders);
     await Promise.all(results.map(
       async item => {
-        if (item.status?.code !== 200 && 'INVALID' in this.emitters) {
+        if (item.status?.code >= 300 && 'INVALID' in this.emitters) {
           await this.orderingTopic.emit(this.emitters['INVALID'], item);
         }
         else if (item.payload?.order_state in this.emitters) {
@@ -1492,7 +1566,7 @@ export class OrderingService
     return {
       items: results,
       total_count: results.length,
-      operation_status: results.some(item => item.status?.code !== 200)
+      operation_status: results.some(item => item.status?.code >= 300)
         ? this.operation_status_codes.PARTIAL
         : this.operation_status_codes.SUCCESS
     } as OrderListResponse;
@@ -1536,7 +1610,10 @@ export class OrderingService
         request.subject,
         context,
       );
-      this.claimPoducts(aggregation);
+      const settings = await this.aggregateSettings(
+        aggregation
+      );
+      this.evaluateProducts(aggregation, settings);
       const orders = await this.resolveOrderListResponse(
         aggregation,
         request.subject,
@@ -1574,12 +1651,10 @@ export class OrderingService
         request.subject,
         context,
       );
-      this.claimPoducts(aggregation);
-
       const settings = await this.aggregateSettings(
         aggregation
       );
-
+      this.evaluateProducts(aggregation, settings);
       const response: OrderSubmitListResponse  = await this.resolveOrderListResponse(
         aggregation,
         request.subject,
@@ -1597,7 +1672,7 @@ export class OrderingService
         })
       );
 
-      if (response.operation_status?.code !== 200) {
+      if (response.operation_status?.code >= 300) {
         this.logger?.error('On Order Submit', response);
         return response;
       }
@@ -1611,7 +1686,7 @@ export class OrderingService
               items: response.orders?.filter(
                 item => {
                   const setting = settings.get(item.payload?.id);
-                  return item.status?.code === 200
+                  return item.status?.code < 300
                     && !setting?.shop_fulfillment_evaluate_disabled
                 }
               ).map(item => ({
@@ -1627,15 +1702,17 @@ export class OrderingService
               r.items?.forEach(
                 fulfillment => {
                   const id = fulfillment.payload?.references?.[0]?.instance_id;
+                  /*
                   const order = response_map[id];
-                  if (order && fulfillment.status?.code !== 200) {
+                  if (order && fulfillment.status?.code >= 300) {
                     order.status = fulfillment.status;
                   }
+                  */
                   fulfillment_map[id] = fulfillment;
                 }
               );
 
-              if (r.operation_status?.code !== 200) {
+              if (r.operation_status?.code >= 300) {
                 throw r.operation_status;
               }
             }
@@ -1659,7 +1736,7 @@ export class OrderingService
               items: response.orders?.filter(
                 item => {
                   const setting = settings.get(item.payload?.id);
-                  return item.status?.code === 200
+                  return item.status?.code < 300
                     && !setting?.shop_fulfillment_create_disabled;
                 }
               ).map(item => ({
@@ -1675,15 +1752,17 @@ export class OrderingService
               r.items?.forEach(
                 fulfillment => {
                   const id = fulfillment.payload?.references?.[0]?.instance_id;
+                  /*
                   const order = response_map[id];
-                  if (order && fulfillment.status?.code !== 200) {
+                  if (order && fulfillment.status?.code >= 300) {
                     order.status = fulfillment.status;
                   }
+                  */
                   fulfillment_map[id] = fulfillment;
                 }
               );
 
-              if (r.operation_status?.code !== 200) {
+              if (r.operation_status?.code >= 300) {
                 throw r.operation_status;
               }
               return r.items;
@@ -1711,7 +1790,7 @@ export class OrderingService
               items: response.orders?.filter(
                 item => {
                   const setting = settings.get(item.payload?.id);
-                  return item.status?.code === 200
+                  return item.status?.code < 300
                     && !setting?.shop_invoice_create_disabled
                     && setting?.shop_invoice_render_disabled
                     && setting?.shop_invoice_send_disabled;
@@ -1735,12 +1814,13 @@ export class OrderingService
           ).then(
             r => {
               if (r.items) {
+                /*
                 r.items.forEach(
                   invoice => {
                     invoice.payload?.references?.forEach(
                       reference => {
                         const order = response_map[reference?.instance_id];
-                        if (invoice.status?.code !== 200 && order) {
+                        if (invoice.status?.code >= 300 && order) {
                           order.status = {
                             ...invoice.status,
                             id: order.payload?.id ?? order.status?.id,
@@ -1750,10 +1830,11 @@ export class OrderingService
                     );
                   }
                 );
+                */
                 response.invoices.push(...r.items);
               }
 
-              if (r.operation_status?.code !== 200) {
+              if (r.operation_status?.code >= 300) {
                 throw r.operation_status;
               }
               return r.items;
@@ -1776,7 +1857,7 @@ export class OrderingService
               items: response.orders?.filter(
                 item => {
                   const setting = settings.get(item.payload?.id);
-                  return item.status?.code === 200
+                  return item.status?.code < 300
                     && (
                       !setting?.shop_invoice_render_disabled
                       || !setting?.shop_invoice_send_disabled
@@ -1801,12 +1882,13 @@ export class OrderingService
           ).then(
             r => {
               if (r.items) {
+                /*
                 r.items.forEach(
                   invoice => {
                     invoice.payload?.references?.forEach(
                       reference => {
                         const order = response_map[reference?.instance_id];
-                        if (invoice.status?.code !== 200 && order) {
+                        if (invoice.status?.code >= 300 && order) {
                           order.status = {
                             ...invoice.status,
                             id: order.payload?.id ?? order.status?.id,
@@ -1816,10 +1898,11 @@ export class OrderingService
                     );
                   }
                 );
+                */
                 response.invoices.push(...r.items);
               }
 
-              if (r.operation_status?.code !== 200) {
+              if (r.operation_status?.code >= 300) {
                 throw r.operation_status;
               }
               return r.items;
@@ -1840,7 +1923,7 @@ export class OrderingService
           const invoices = response.invoices?.filter(
             item => {
               const setting = settings.get(item.payload?.references?.[0]?.instance_id);
-              return item.status?.code === 200
+              return item.status?.code < 300
                 && item.payload?.references?.[0]?.instance_id
                 && !setting?.shop_invoice_send_disabled;
             }
@@ -1868,7 +1951,7 @@ export class OrderingService
                   }
                 );
 
-                if (r.operation_status?.code !== 200) {
+                if (r.operation_status?.code >= 300) {
                   throw r.operation_status;
                 }
               }
@@ -1886,15 +1969,11 @@ export class OrderingService
           }
         }
 
-        await this.product_service.update(
-          {
-            items: aggregation.products.all,
-            total_count: aggregation.products.all.length,
-            subject: this.tech_user ?? request.subject,
-          },
+        await this.claimProducts(
+          aggregation,
+          this.tech_user ?? request.subject,
           context,
         );
-
         await this.updateState(
           response_map,
           OrderState.SUBMITTED,
@@ -1916,7 +1995,7 @@ export class OrderingService
       finally {
         this.logger?.debug('Cleanup fulfillments of failed orders...');
         const failed_ids = response.invoices?.filter(
-          invoice => invoice.status?.code !== 200
+          invoice => invoice.status?.code >= 300
         ).flatMap(
           invoice => invoice.payload?.references?.map(
             r => r.instance_id
@@ -1925,7 +2004,7 @@ export class OrderingService
 
         if (this.fulfillment_service) {
           const ids = (
-            response.operation_status?.code === 200
+            response.operation_status?.code < 300
               ? response.fulfillments?.filter(
                 fulfillment => fulfillment.payload?.references?.some(
                   reference => failed_ids.includes(reference?.instance_id)
@@ -1945,7 +2024,7 @@ export class OrderingService
               context,
             ).then(
               r => {
-                if (r.operation_status?.code !== 200) {
+                if (r.operation_status?.code >= 300) {
                   throw r.operation_status;
                   // r.operation_status.message = 'On Fulfillment Clean Up: ' + r.operation_status.message;
                   // response.operation_status = r.operation_status;
@@ -1957,10 +2036,6 @@ export class OrderingService
                 }
                 throw error;
               }
-            );
-
-            response.fulfillments = response.fulfillments?.filter(
-              fulfillment => !ids.includes(fulfillment.payload?.id)
             );
           }
         }
@@ -2114,7 +2189,7 @@ export class OrderingService
           return false;
         }
 
-        if (order.status?.code !== 200) {
+        if (order.status?.code >= 300) {
           response.status = order.status;
           return false;
         }
@@ -2226,7 +2301,7 @@ export class OrderingService
       aggregation,
     ).then(
       response => {
-        if (response.operation_status?.code === 200) {
+        if (response.operation_status?.code < 300) {
           return response.items?.reduce(
             (a, b) => {
               a[b.reference?.instance_id ?? b.status?.id] = b;
@@ -2254,7 +2329,7 @@ export class OrderingService
 
         const fulfillment: FulfillmentResponse = {
           payload:
-            status?.code === 200 ?
+            status?.code < 300 ?
               {
                 shop_id: order.payload.shop_id,
                 customer_id: order.payload.customer_id,
@@ -2320,11 +2395,11 @@ export class OrderingService
       );
 
       const invalids = prototypes.filter(
-        item => item.status?.code !== 200
+        item => item.status?.code >= 300
       );
 
       const valids = prototypes.filter(
-        item => item.status?.code === 200
+        item => item.status?.code < 300
       );
       
       const evaluated = valids.length ? await this.fulfillment_service.evaluate(
@@ -2336,12 +2411,12 @@ export class OrderingService
         context
       ).then(
         response => {
-          if (response.operation_status?.code !== 200) {
+          if (response.operation_status?.code >= 300) {
             throw response.operation_status;
           }
           response.items = response.items?.filter(
             item => {
-              if (item.status?.code === 200) {
+              if (item.status?.code < 300) {
                 return true;
               }
               else {
@@ -2401,11 +2476,11 @@ export class OrderingService
       );
 
       const invalids = prototypes.filter(
-        item => item.status?.code !== 200
+        item => item.status?.code >= 300
       );
 
       const valids = prototypes.filter(
-        item => item.status?.code === 200
+        item => item.status?.code < 300
       );
 
       const created = valids.length ? await this.fulfillment_service.create(
@@ -2417,12 +2492,12 @@ export class OrderingService
         context
       ).then(
         response => {
-          if (response?.operation_status?.code !== 200) {
+          if (response?.operation_status?.code >= 300) {
             throw response.operation_status;
           }
           response.items = response.items?.filter(
             item => {
-              if (item.status?.code === 200) {
+              if (item.status?.code < 300) {
                 return true;
               }
               else {
@@ -2528,7 +2603,7 @@ export class OrderingService
         context
       );
       const valids = prototypes.filter(
-        proto => proto.status?.code === 200
+        proto => proto.status?.code < 300
       ).map(
         proto => proto.payload!
       );
@@ -2593,7 +2668,7 @@ export class OrderingService
       invoice => {
         try {
           const master = order_map[invoice.sections?.[0]?.order_id];
-          if (master?.status?.code !== 200) {
+          if (master?.status?.code >= 300) {
             return {
               status: master?.status ?? createStatusCode(
                 invoice.sections?.[0]?.order_id,
@@ -2607,7 +2682,7 @@ export class OrderingService
           for (const section of invoice.sections!) {
             const order = order_map[section.order_id];
 
-            if (order?.status?.code !== 200) {
+            if (order?.status?.code >= 300) {
               return {
                 payload: undefined,
                 status: order?.status ?? createStatusCode(
@@ -2772,7 +2847,7 @@ export class OrderingService
         aggregation,
       );
       const invalid = prototypes.some(
-        proto => proto.status?.code !== 200
+        proto => proto.status?.code >= 300
       );
 
       if (invalid) {
@@ -2892,7 +2967,7 @@ export class OrderingService
         context,
       );
       const valids = prototypes.filter(
-        proto => proto.status?.code === 200
+        proto => proto.status?.code < 300
       ).map(
         proto => proto.payload
       );
@@ -3096,12 +3171,12 @@ export class OrderingService
       const [entity] = response.id.split('/');
       if (entity !== 'order') return;
 
-      if (response.operation_status?.code !== 200) {
+      if (response.operation_status?.code >= 300) {
         this.awaits_render_result.reject(response.id, response.operation_status);
       }
 
       const error = response.items.find(
-        item => item.status?.code !== 200
+        item => item.status?.code >= 300
       );
       if (error) {
         this.awaits_render_result.reject(response.id, error);

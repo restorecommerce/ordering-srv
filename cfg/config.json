@@ -7,6 +7,12 @@
       "prettyPrint": true
     },
     "fieldOptions": {
+      "maskFields": [
+        "password",
+        "request.password",
+        "request.token",
+        "items.[0].password"
+      ],
       "omitFields": [
         "request.context.subject.value.data",
         "request.context.security.value.data",
@@ -420,6 +426,7 @@
   },
   "defaults": {
     "Setting": {
+      "shop_order_overbooking_enabled": true,
       "shop_fulfillment_evaluate_disabled": false,
       "shop_fulfillment_create_disabled": false,
       "shop_invoice_create_disabled": false,

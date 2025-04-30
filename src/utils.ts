@@ -196,6 +196,7 @@ export const DefaultUrns = {
   organization: 'urn:restorecommerce:acs:model:organization.Organization',
   user: 'urn:restorecommerce:acs:model:user.User',
 
+  shop_order_overbooking_enabled:     'urn:restorecommerce:shop:setting:order:overbooking:enabled',
   shop_order_notifications_disabled:  'urn:restorecommerce:shop:setting:order:state:notification:disabled',       // Sends notification on order state change unless disabled (default: false)
   shop_fulfillment_evaluate_disabled:'urn:restorecommerce:shop:setting:order:submit:fulfillment:evaluate:disabled',
   shop_fulfillment_create_disabled:  'urn:restorecommerce:shop:setting:order:submit:fulfillment:create:disabled', // Creates fulfillment on order submit unless disabled (default: false)
@@ -215,6 +216,7 @@ export const DefaultUrns = {
 export type KnownUrns = typeof DefaultUrns;
 
 export const DefaultSetting = {
+  shop_order_overbooking_enabled: false,
   shop_order_notifications_disabled: false,
   shop_fulfillment_evaluate_disabled: false,
   shop_fulfillment_create_disabled: false,
@@ -238,6 +240,7 @@ export type ResolvedSettingMap = Map<string, ResolvedSetting>;
 const parseList = (value: string) => value?.match(/^\[.*\]$/) ? JSON.parse(value) : value?.split(/\s*,\s*/)
 const parseTrue = (value: string) => value?.toString().toLowerCase() === 'true';
 const SettingParser: { [key: string]: (value: string) => any } = {
+  shop_order_overbooking_enabled: parseTrue,
   shop_order_send_confirm_disabled: parseTrue,
   shop_order_send_cancel_disabled: parseTrue,
   shop_order_send_withdrawn_disabled: parseTrue,
