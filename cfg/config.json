@@ -92,6 +92,9 @@
       "orderDeleted": {
         "messageObject": "io.restorecommerce.resourcebase.Deleted"
       },
+      "orderDeletedAll": {
+        "messageObject": "io.restorecommerce.resourcebase.Deleted"
+      },
       "orderFailed": {
         "messageObject": "io.restorecommerce.order.OrderResponse"
       },
