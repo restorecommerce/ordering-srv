@@ -179,7 +179,7 @@ export class Worker {
       );
     },
     handleRenderResponse: (msg: any, context: any, config: any, eventName: string) => {
-      return this.orderingService?.handleRenderResponse(msg, context).then(
+      return this.orderingService?.handleRenderResponse(msg).then(
         () => this.logger?.info(`Event ${eventName} handled.`),
         error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
       );
@@ -208,7 +208,7 @@ export class Worker {
     const kafkaCfg = cfg.get('events:kafka');
     this.events = new Events(kafkaCfg, logger);
     await this.events.start();
-    this.offsetStore = new OffsetStore(this.events, cfg, logger);
+    this.offsetStore = new OffsetStore(this.events as any, cfg, logger);
     logger.info('Event Groupes started');
 
     const redisConfig = cfg.get('redis');

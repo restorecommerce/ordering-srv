@@ -127,15 +127,15 @@ import {
   TemplateUseCase
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/template.js';
 import {
-  AccessControlledServiceBase
-} from './experimental/AccessControlledServiceBase.js';
+  AccessControlledServiceBase,
+} from '@restorecommerce/resource-base-interface/lib/experimental/AccessControlledServiceBase.js';
 import {
-  ResourceAwaitQueue,
   ClientRegister,
   ResourceAggregator,
+  ResourceAwaitQueue,
   ResourceMap,
   Pipe,
-} from './experimental/index.js';
+} from '@restorecommerce/resource-base-interface/lib/experimental/index.js';
 import {
   DefaultUrns,
   FulfillmentMap,
@@ -384,7 +384,7 @@ export class OrderingService
   ) {
     super(
       cfg.get('database:main:entities:0') ?? 'order',
-      orderingTopic,
+      orderingTopic as any,
       db,
       cfg,
       logger,
@@ -2117,22 +2117,6 @@ export class OrderingService
   ): Promise<StatusListResponse> {
     throw new Error('Not Implemented!');
   };
-
-  @resolves_subject()
-  @access_controlled_function({
-    action: AuthZAction.DELETE,
-    operation: Operation.isAllowed,
-    context: OrderingService?.ACSContextFactory,
-    resource: DefaultResourceFactory('order'),
-    database: 'arangoDB',
-    useCache: true,
-  })
-  public override delete(
-    request: DeleteRequest,
-    context: any,
-  ) {
-    return super.delete(request, context);
-  }
 
   private async getFulfillmentSolution(
     request: FulfillmentRequestList,

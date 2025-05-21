@@ -109,7 +109,7 @@ import {
   Resolver,
   ArrayResolver,
   ResourceMap,
-} from './experimental/index.js';
+} from '@restorecommerce/resource-base-interface/lib/experimental/index.js';
 
 export type BigVAT = {
   tax_id: string;
