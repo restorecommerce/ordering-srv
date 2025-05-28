@@ -109,7 +109,7 @@ import {
   Resolver,
   ArrayResolver,
   ResourceMap,
-} from './experimental/index.js';
+} from '@restorecommerce/resource-base-interface/lib/experimental/index.js';
 
 export type BigVAT = {
   tax_id: string;
@@ -702,12 +702,12 @@ export const createStatusCode = (
   entity?: string,
   status?: Status,
   entity_id?: string,
-  error?: string,
+  details?: string,
 ): Status => ({
   id,
   code: Number.isInteger(status?.code) ? status.code : 500,
   message: status?.message?.replace(
-    '{error}', error ?? 'undefined'
+    '{details}', details ?? 'undefined'
   ).replace(
     '{entity}', entity ?? 'undefined'
   ).replace(
