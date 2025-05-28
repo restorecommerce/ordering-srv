@@ -702,12 +702,12 @@ export const createStatusCode = (
   entity?: string,
   status?: Status,
   entity_id?: string,
-  error?: string,
+  details?: string,
 ): Status => ({
   id,
   code: Number.isInteger(status?.code) ? status.code : 500,
   message: status?.message?.replace(
-    '{error}', error ?? 'undefined'
+    '{details}', details ?? 'undefined'
   ).replace(
     '{entity}', entity ?? 'undefined'
   ).replace(

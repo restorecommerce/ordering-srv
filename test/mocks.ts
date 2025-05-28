@@ -902,11 +902,7 @@ const solutions: FulfillmentSolutionListResponse = {
           ]
         }
       ],
-      status: {
-        id: 'validOrder_1',
-        code: 200,
-        message: 'OK',
-      }
+      status
     },
     {
       reference: {
@@ -935,6 +931,7 @@ const solutions: FulfillmentSolutionListResponse = {
                 {
                   productId: 'physicalProduct_1',
                   variantId: '1',
+                  quantity: 4,
                   package: {
                     sizeInCm: {
                       height: 10,
@@ -944,7 +941,6 @@ const solutions: FulfillmentSolutionListResponse = {
                     weightInKg: 0.58,
                     rotatable: true,
                   },
-                  quantity: 4,
                 },
               ],
               amount: {
@@ -965,7 +961,7 @@ const solutions: FulfillmentSolutionListResponse = {
       status
     }
   ],
-  totalCount: 1,
+  totalCount: 2,
   operationStatus
 };
 
@@ -1097,7 +1093,7 @@ export const rules = {
     find: (
       call: any,
       callback: (error: any, response: FulfillmentSolutionListResponse) => void,
-    ) => callback(null, solutions),
+    ) => callback(null, solutions)
   },
   fulfillment: {
     create: (

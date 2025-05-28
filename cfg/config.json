@@ -9,15 +9,14 @@
     "fieldOptions": {
       "maskFields": [
         "password",
+        "token",
         "request.password",
         "request.token",
-        "items.[0].password"
-      ],
-      "omitFields": [
-        "request.context.subject.value.data",
-        "request.context.security.value.data",
-        "request.context.resources.[0].value.data",
-        "decodedMsg.items.[0].payload.bodies.[0].body.data"
+        "items.[0].password",
+        "request.context.subject.value",
+        "request.context.security.value",
+        "request.context.resources.[0].value",
+        "decodedMsg.items.[0].payload.bodies.[0].body"
       ]
     }
   },

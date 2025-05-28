@@ -77,7 +77,6 @@ import {
   Filter_Operation
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/filter.js';
 import {
-  DeleteRequest,
   Filter_ValueType,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import {
@@ -283,17 +282,21 @@ export class OrderingService
       code: 404,
       message: 'Solution for {entity} {id} not found!',
     },
+    SUB_SERVICE_ERROR: {
+      code: 500,
+      message: 'Order {id} rejected due to errors in {entity}: {details}!'
+    },
     CONTENT_NOT_SUPPORTED: {
       code: 400,
-      message: '{entity} {id}: Content type {error} is not supported!',
+      message: '{entity} {id}: Content type {details} is not supported!',
     },
     PROTOCOL_NOT_SUPPORTED: {
       code: 400,
-      message: '{entity} {id}: Protocol of {error} is not supported!',
+      message: '{entity} {id}: Protocol of {details} is not supported!',
     },
     FETCH_FAILED: {
       code: 500,
-      message: '{entity} {id}: {error}!',
+      message: '{entity} {id}: {details}!',
     },
     NO_TEMPLATE_BODY: {
       code: 500,
@@ -880,6 +883,15 @@ export class OrderingService
         product_id: main.id,
         variant_id,
         quantity,
+        name: variant.name,
+        description: variant.export_description ?? variant.description,
+        hs_code: variant.hs_code,
+        taric_code: variant.taric_code,
+        origin_country_id: main.product.origin_country_id,
+        value: {
+          currency_id: variant.price?.currency_id,
+          gross: variant.price?.regular_price
+        },
         package: variant.package,
       }];
     }
@@ -1701,13 +1713,17 @@ export class OrderingService
             r => {
               r.items?.forEach(
                 fulfillment => {
-                  const id = fulfillment.payload?.references?.[0]?.instance_id;
-                  /*
+                  const id = fulfillment.payload?.references?.[0]?.instance_id ?? fulfillment.status?.id;
                   const order = response_map[id];
                   if (order && fulfillment.status?.code >= 300) {
-                    order.status = fulfillment.status;
+                    order.status = createStatusCode(
+                      id,
+                      'Fulfillment',
+                      this.status_codes.SUB_SERVICE_ERROR,
+                      id,
+                      fulfillment.status?.message,
+                    );
                   }
-                  */
                   fulfillment_map[id] = fulfillment;
                 }
               );
@@ -1751,13 +1767,17 @@ export class OrderingService
             r => {
               r.items?.forEach(
                 fulfillment => {
-                  const id = fulfillment.payload?.references?.[0]?.instance_id;
-                  /*
+                  const id = fulfillment.payload?.references?.[0]?.instance_id ?? fulfillment.status?.id;
                   const order = response_map[id];
                   if (order && fulfillment.status?.code >= 300) {
-                    order.status = fulfillment.status;
+                    order.status = createStatusCode(
+                      id,
+                      'Fulfillment',
+                      this.status_codes.SUB_SERVICE_ERROR,
+                      id,
+                      fulfillment.status?.message,
+                    );
                   }
-                  */
                   fulfillment_map[id] = fulfillment;
                 }
               );
@@ -1814,24 +1834,16 @@ export class OrderingService
           ).then(
             r => {
               if (r.items) {
-                /*
+                response.invoices.push(...r.items);
                 r.items.forEach(
-                  invoice => {
-                    invoice.payload?.references?.forEach(
-                      reference => {
-                        const order = response_map[reference?.instance_id];
-                        if (invoice.status?.code >= 300 && order) {
-                          order.status = {
-                            ...invoice.status,
-                            id: order.payload?.id ?? order.status?.id,
-                          };
-                        }
-                      }
-                    );
+                  item => {
+                    const id = item.payload?.references?.[0]?.instance_id;
+                    const order = response_map[id];
+                    if (order && item.status?.code >= 300) {
+                      order.status = item.status;
+                    }
                   }
                 );
-                */
-                response.invoices.push(...r.items);
               }
 
               if (r.operation_status?.code >= 300) {
@@ -1882,24 +1894,22 @@ export class OrderingService
           ).then(
             r => {
               if (r.items) {
-                /*
+                response.invoices.push(...r.items);
                 r.items.forEach(
-                  invoice => {
-                    invoice.payload?.references?.forEach(
-                      reference => {
-                        const order = response_map[reference?.instance_id];
-                        if (invoice.status?.code >= 300 && order) {
-                          order.status = {
-                            ...invoice.status,
-                            id: order.payload?.id ?? order.status?.id,
-                          };
-                        }
-                      }
-                    );
+                  item => {
+                    const id = item.payload?.references?.[0]?.instance_id;
+                    const order = response_map[id];
+                    if (order && item.status?.code >= 300) {
+                      order.status = createStatusCode(
+                        id,
+                        'Invoice',
+                        this.status_codes.SUB_SERVICE_ERROR,
+                        id,
+                        item.status?.message,
+                      );
+                    }
                   }
                 );
-                */
-                response.invoices.push(...r.items);
               }
 
               if (r.operation_status?.code >= 300) {
@@ -2219,11 +2229,11 @@ export class OrderingService
       query => query.items?.length
     );
 
-    const query = {
+    const query: FulfillmentSolutionQueryList = {
       items,
       total_count: items?.length,
       subject: request.subject
-    } as FulfillmentSolutionQueryList;
+    };
     const solutions = await this.fulfillment_product_service?.find(
       query,
       context
@@ -2332,13 +2342,6 @@ export class OrderingService
                   recipient: order.payload?.shipping_address,
                 } as Packaging,
                 total_amounts: solution.solutions[0].amounts,
-                meta: {
-                  created: new Date(),
-                  modified: new Date(),
-                  created_by: request.subject?.id,
-                  modified_by: request.subject?.id,
-                  owners: order.payload.meta.owners,
-                }
               } : undefined,
           status: {
             ...status,
