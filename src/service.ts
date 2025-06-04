@@ -212,7 +212,7 @@ export const MetaDataInjector = async <T extends OrderList>(
         }],
       } : undefined,
     ].filter(i => i);
-    item.id ??= randomUUID().replace('-', '');
+    item.id ??= randomUUID().replaceAll('-', '');
   });
   return request;
 };
@@ -812,6 +812,8 @@ export class OrderingService
                 aggregation,
                 this.contact_point_type_ids.billing,
               );
+              delete item.payload.shipping_address?.address?.meta;
+              delete item.payload.billing_address?.address?.meta;
             }
             catch (e: any) {
               this.catchStatusError(e, item);
@@ -1840,7 +1842,13 @@ export class OrderingService
                     const id = item.payload?.references?.[0]?.instance_id;
                     const order = response_map[id];
                     if (order && item.status?.code >= 300) {
-                      order.status = item.status;
+                      order.status = createStatusCode(
+                        id,
+                        'Invoicing',
+                        this.status_codes.SUB_SERVICE_ERROR,
+                        id,
+                        item.status?.message,
+                      );
                     }
                   }
                 );
@@ -1902,7 +1910,7 @@ export class OrderingService
                     if (order && item.status?.code >= 300) {
                       order.status = createStatusCode(
                         id,
-                        'Invoice',
+                        'Invoicing',
                         this.status_codes.SUB_SERVICE_ERROR,
                         id,
                         item.status?.message,
@@ -2320,6 +2328,9 @@ export class OrderingService
           this.status_codes.SOLUTION_NOT_FOUND,
           item.order_id,
         );
+        delete item.sender_address?.address?.meta;
+        delete order.payload?.billing_address?.address?.meta;
+        delete order.payload?.shipping_address?.address?.meta;
 
         const fulfillment: FulfillmentResponse = {
           payload:
@@ -2706,7 +2717,7 @@ export class OrderingService
                   : order.payload?.items ?? []
               ).map(
                 (item, i): Position => ({
-                  id: randomUUID(),
+                  id: randomUUID().replaceAll('-', ''),
                   unit_price: item.unit_price,
                   quantity: item.quantity,
                   amount: item.amount ?? throwStatusCode(
@@ -2719,7 +2730,6 @@ export class OrderingService
                     product_id: item.product_id,
                     variant_id: item.variant_id,
                   },
-                  attributes: [],
                 })
               );
               const fulfillment_items: Position[] = (
@@ -2737,7 +2747,7 @@ export class OrderingService
                 ) : []
               ).map(
                 (a, i): Position => ({
-                  id: randomUUID(),
+                  id: randomUUID().replaceAll('-', ''),
                   unit_price: a.price,
                   quantity: 1,
                   amount: a.amount ?? throwStatusCode(
@@ -2769,6 +2779,7 @@ export class OrderingService
             }
           );
 
+          delete master.payload?.billing_address?.address?.meta;
           return {
             payload: {
               invoice_number: invoice.invoice_number,
@@ -2788,9 +2799,8 @@ export class OrderingService
                 aggregation.currencies,
               ),
               sections,
+              timestamp: new Date(),
               meta: {
-                created: new Date(),
-                modified: new Date(),
                 created_by: request.subject?.id,
                 modified_by: request.subject?.id,
                 owners: master.payload.meta.owners,

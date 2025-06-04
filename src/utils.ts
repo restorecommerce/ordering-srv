@@ -110,6 +110,7 @@ import {
   ArrayResolver,
   ResourceMap,
 } from '@restorecommerce/resource-base-interface/lib/experimental/index.js';
+import * as _ from 'lodash-es';
 
 export type BigVAT = {
   tax_id: string;
@@ -222,7 +223,7 @@ export const DefaultSetting = {
   shop_fulfillment_create_disabled: false,
   shop_invoice_create_disabled: false,
   shop_invoice_render_disabled: false,
-  shop_invoice_send_disabled: false,
+  shop_invoice_send_disabled: true,
   shop_order_error_cleanup_disabled: false,
   shop_email_render_options: undefined as any,
   shop_email_render_strategy: RenderRequest_Strategy.INLINE,
@@ -690,7 +691,7 @@ export const packRenderData = (
   const resolved = {
     order: resolveOrder(
       aggregation,
-      order
+      _.cloneDeep(order)
     ),
   };
   const buffer = marshallProtobufAny(resolved);
@@ -706,11 +707,11 @@ export const createStatusCode = (
 ): Status => ({
   id,
   code: Number.isInteger(status?.code) ? status.code : 500,
-  message: status?.message?.replace(
+  message: status?.message?.replaceAll(
     '{details}', details ?? 'undefined'
-  ).replace(
+  ).replaceAll(
     '{entity}', entity ?? 'undefined'
-  ).replace(
+  ).replaceAll(
     '{id}', entity_id ?? 'undefined'
   ) ?? 'Unknown status',
 });
@@ -737,9 +738,9 @@ export const createOperationStatusCode = (
   id?: string,
 ): OperationStatus => ({
   code: status?.code ?? 500,
-  message: status?.message?.replace(
+  message: status?.message?.replaceAll(
     '{entity}', entity ?? 'undefined'
-  ).replace(
+  ).replaceAll(
     '{id}', id ?? 'undefined'
   ) ?? 'Unknown status',
 });

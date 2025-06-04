@@ -304,7 +304,7 @@ export class Worker {
     });
 
     // start server
-    await initAuthZ(cfg);
+    await initAuthZ(cfg, logger);
     logger.debug('Starting server...');
     await this.server.start();
     logger.info('Server started and ready to use.');
