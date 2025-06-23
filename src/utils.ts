@@ -661,6 +661,7 @@ export const resolveOrder = (
         };
         const product = item.product.product;
         const nature = product.physical ?? product.virtual ?? product.service
+        delete nature.variants?.[0]?.price?.currency;
         item.unit_price = nature.variants?.[0]?.price;
       }
     }

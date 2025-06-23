@@ -1965,7 +1965,9 @@ export class OrderingService
                     const invoice = response.invoices.find(
                       invoice => invoice.payload?.id === status.id
                     );
-                    invoice.status = status;
+                    if (invoice) {
+                      invoice.status = status;
+                    }
                   }
                 );
 
