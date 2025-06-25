@@ -358,7 +358,7 @@ export const filterTax = (
 );
 
 export const calcAmount = (
-  gross: number | BigNumber,
+  net: number | BigNumber,
   taxes: RatioedTax[],
   origin: Country,
   destination: Country,
@@ -373,11 +373,11 @@ export const calcAmount = (
       private_customer,
     )
   );
-  gross = new BigNumber(gross);
+  net = new BigNumber(net);
   const precision = currency?.precision ?? 2;
   const vats = taxes.map((tax): VAT => ({
     tax_id: tax.id,
-    vat: gross.multipliedBy(
+    vat: net.multipliedBy(
       tax.rate
     ).multipliedBy(
       tax.tax_ratio ?? 1.0
@@ -385,14 +385,14 @@ export const calcAmount = (
       precision
     ).toNumber(),
   }));
-  const net = vats.reduce(
+  const gross = vats.reduce(
     (a, b) => a.plus(b.vat),
-    gross
+    net
   );
   return {
     currency_id: currency?.id,
-    gross: gross.decimalPlaces(precision).toNumber(),
     net: net.decimalPlaces(precision).toNumber(),
+    gross: gross.decimalPlaces(precision).toNumber(),
     vats,
   };
 };

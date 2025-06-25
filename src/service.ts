@@ -892,7 +892,7 @@ export class OrderingService
         origin_country_id: main.product.origin_country_id,
         value: {
           currency_id: variant.price?.currency_id,
-          gross: variant.price?.regular_price
+          net: variant.price?.regular_price,
         },
         package: variant.package,
       }];
@@ -1163,12 +1163,12 @@ export class OrderingService
               const currency = aggregation.currencies.get(variant.price?.currency_id);
               const taxes = await getTaxesRecursive(product);
               const unit_price = product.bundle ? product.bundle?.price : variant?.price;
-              const gross = new BigNumber(
+              const net = new BigNumber(
                 unit_price?.sale ? unit_price?.sale_price ?? 0 : unit_price?.regular_price ?? 0
               ).multipliedBy(item.quantity ?? 0);
               item.unit_price = unit_price;
               item.amount = calcAmount(
-                gross, taxes, shop_country,
+                net, taxes, shop_country,
                 billing_country, currency,
                 !!customer.private?.user_id
               );
