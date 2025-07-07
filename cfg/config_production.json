@@ -73,6 +73,12 @@
     "shop": {
       "address": "resource-srv:50051"
     },
+    "setting": {
+      "address": "resource-srv:50051"
+    },
+    "template": {
+      "address": "resource-srv:50051"
+    },
     "organization": {
       "address": "resource-srv:50051"
     },

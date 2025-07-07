@@ -3104,13 +3104,15 @@ export class OrderingService
       (a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0)
     ) ?? []
 
-    if (templates.length === 0 && default_templates?.length > 0) {
-      templates.push(...default_templates);
-    }
-    else {
-      throw createOperationStatusCode(
-        this.operation_status_codes.NO_TEMPLATES
-      );
+    if (templates.length === 0) {
+      if (default_templates?.length > 0) {
+        templates.push(...default_templates);
+      }
+      else {
+        throw createOperationStatusCode(
+          this.operation_status_codes.NO_TEMPLATES
+        );
+      }
     }
     
     const bodies: RenderRequest_Template[][]  = await Promise.all(
