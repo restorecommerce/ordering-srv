@@ -779,9 +779,9 @@ export class OrderingService
               aggregation.taxes.all.map(
                 tax => tax.country_id
               ),
-              aggregation.currencies.all.flatMap(
+              /*aggregation.currencies.all.flatMap(
                 currency => currency.country_ids
-              ),
+              ),*/
               aggregation.items.map(
                 item => item.payload?.billing_address?.address?.country_id
               ),
