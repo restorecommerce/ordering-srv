@@ -428,6 +428,8 @@ export const calcTotalAmounts = (
         ).decimalPlaces(precision).toNumber(),
         vats: Object.entries(amounts.flatMap(
           a => a.vats
+        ).filter(
+          Boolean
         ).reduce(
           (a, b) => {
             const c = a[b.tax_id];
