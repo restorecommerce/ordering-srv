@@ -2795,7 +2795,10 @@ export class OrderingService
                 })
               ),
               customer_remark: master.payload.customer_remark,
-              recipient: master.payload.billing_address,
+              customer_order_number: master.payload.customer_order_nr,
+              customer_vat_id: master.payload.customer_vat_id,
+              recipient: master.payload.shipping_address ?? master.payload.billing_address,
+              billing_address: master.payload.billing_address ?? master.payload.shipping_address,
               total_amounts: calcTotalAmounts(
                 sections.flatMap(s => s.amounts),
                 aggregation.currencies,
