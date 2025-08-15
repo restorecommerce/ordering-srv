@@ -681,8 +681,13 @@ export class OrderingService
           },
           {
             service: SettingServiceDefinition,
-            map_by_ids: (aggregation) => aggregation.shops?.all.map(
-              shop => shop?.setting_id
+            map_by_ids: (aggregation) => [].concat(
+              aggregation.shops?.all.map(
+                shop => shop?.setting_id
+              ),
+              aggregation.customers?.all.map(
+                customer => customer?.setting_id
+              ),
             ),
             container: 'settings',
             entity: 'Setting',
@@ -2780,8 +2785,6 @@ export class OrderingService
               } as Section;
             }
           );
-
-          delete master.payload?.billing_address?.address?.meta;
           return {
             payload: {
               invoice_number: invoice.invoice_number,
