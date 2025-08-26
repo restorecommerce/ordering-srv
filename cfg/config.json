@@ -366,47 +366,6 @@
       "token": "1a4c6789-6435-487a-9308-64d06384acf9"
     }
   },
-  "statusCodes": {
-    "OK": {
-      "id": "",
-      "code": 200,
-      "message": "OK"
-    },
-    "NOT_FOUND": {
-      "id": "",
-      "code": 404,
-      "message": "{entity} {id} not found!"
-    },
-    "NOT_SUBMITTED": {
-      "id": "",
-      "code": 400,
-      "message": "{entity} {id} expected to be submitted!"
-    },
-    "NO_PHYSICAL_ITEM": {
-      "id": "",
-      "code": 207,
-      "message": "{entity} {id} includes no physical item!"
-    },
-    "IN_HOMOGEN_INVOICE": {
-      "id": "",
-      "code": 400,
-      "message": "{entity} {id} must have identical customer_id and shop_id to master {entity}!"
-    }
-  },
-  "operationStatusCodes": {
-    "SUCCESS": {
-      "code": 200,
-      "message": "SUCCESS"
-    },
-    "PARTIAL": {
-      "code": 207,
-      "message": "Warning: Partially executed with errors!"
-    },
-    "LIMIT_EXHAUSTED": {
-      "code": 500,
-      "message": "Query limit 1000 for {entity} exhausted!"
-    }
-  },
   "errors": {
     "INVALID_CREDENTIALS": {
       "code": 401,

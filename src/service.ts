@@ -127,6 +127,7 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/template.js';
 import {
   AccessControlledServiceBase,
+  AccessControlledServiceBaseOperationStatusCodes,
 } from '@restorecommerce/resource-base-interface/lib/experimental/AccessControlledServiceBase.js';
 import {
   ClientRegister,
@@ -160,62 +161,116 @@ import {
   packRenderData,
   StateMap,
 } from './utils.js';
+import {
+  OperationStatusCodes,
+  ServiceBaseStatusCodes,
+  StatusCodes
+} from '@restorecommerce/resource-base-interface';
 
 const CREATE_FULFILLMENT = 'createFulfillment';
 const CREATE_INVOICE = 'createInvoice';
 
-export const MetaDataInjector = async <T extends OrderList>(
-  self: any,
-  request: T,
-  ...args: any
-): Promise<T> => {
-  const urns = self.cfg.get('authorization:urns');
-  const ids = request.items?.map(
-    (item) => item.id
-  );
-  const meta_map = ids.length ? await self.get(
-    ids,
-    request.subject,
-  ).then(
-    (response: OrderListResponse) => new Map(response.items?.map(
-      item => {
-        if (item.payload.order_state && item.payload.order_state !== OrderState.PENDING) {
-          throw createOperationStatusCode(
-            self.operation_status_codes.CONFLICT,
-            'order',
-          );
-        }
-        return [item.payload.id, item.payload.meta];
-      }
-    ))
-  ) : undefined;
-
-  request.items?.forEach((item) => {
-    item.meta ??= meta_map?.get(item.id) ?? {};
-    item.meta.modified ??= new Date();
-    item.meta.modified_by ??= request.subject?.id;
-    item.meta.owners ??= [
-      request.subject?.scope ? {
-        id: urns.ownerIndicatoryEntity,
-        value: urns.organization,
-        attributes: [{
-          id: urns.ownerInstance,
-          value: request.subject.scope
-        }],
-      } : undefined,
-      request.subject?.id ? {
-        id: urns.ownerIndicatoryEntity,
-        value: urns.user,
-        attributes: [{
-          id: urns.ownerInstance,
-          value: request.subject.id
-        }],
-      } : undefined,
-    ].filter(i => i);
-    item.id ??= randomUUID().replaceAll('-', '');
-  });
-  return request;
+export const OrderingStatusCodes = {
+  ...ServiceBaseStatusCodes,
+  ITEM_NOT_FOUND: {
+    code: 404,
+    message: '{entity} {id} not found!',
+  },
+  NO_LEGAL_ADDRESS: {
+    code: 404,
+    message: '{entity} {id} has no legal address!',
+  },
+  NO_SHIPPING_ADDRESS: {
+    code: 404,
+    message: '{entity} {id} has no shipping address!',
+  },
+  NOT_SUBMITTED: {
+    code: 400,
+    message: '{entity} {id} expected to be submitted!',
+  },
+  NO_ITEM: {
+    code: 400,
+    message: '{entity} {id} has no item in query',
+  },
+  NO_AMOUNT: {
+    code: 400,
+    message: '{entity} {id} amount is missing',
+  },
+  NO_PHYSICAL_ITEM: {
+    code: 207,
+    message: '{entity} {id} includes no physical item!',
+  },
+  IN_HOMOGEN_INVOICE: {
+    code: 400,
+    message: '{entity} {id} must have identical customer_id and shop_id to master {entity}!',
+  },
+  SOLUTION_NOT_FOUND: {
+    code: 404,
+    message: 'Solution for {entity} {id} not found!',
+  },
+  SUB_SERVICE_ERROR: {
+    code: 500,
+    message: 'Order {id} rejected due to errors in {entity}: {details}!'
+  },
+  CONTENT_NOT_SUPPORTED: {
+    code: 400,
+    message: '{entity} {id}: Content type {details} is not supported!',
+  },
+  PROTOCOL_NOT_SUPPORTED: {
+    code: 400,
+    message: '{entity} {id}: Protocol of {details} is not supported!',
+  },
+  FETCH_FAILED: {
+    code: 500,
+    message: '{entity} {id}: {details}!',
+  },
+  NO_TEMPLATE_BODY: {
+    code: 500,
+    message: 'No body defined in template {id}!',
+  },
+  OUT_OF_STOCK: {
+    code: 400,
+    message: 'The following {entity} are out of stock {id}!',
+  },
+  OVERBOOKED: {
+    code: 207,
+    message: 'Warning: The following {entity} are overbooked {id}!',
+  },
 };
+export type OrderingStatusCodes = StatusCodes<typeof OrderingStatusCodes>;
+
+export const OrderingOperationStatusCodes = {
+  ...AccessControlledServiceBaseOperationStatusCodes,
+  LIMIT_EXHAUSTED: {
+    code: 500,
+    message: 'Query limit 1000 exhausted!',
+  },
+  CONFLICT: {
+    code: 409,
+    message: 'Resource conflict, ID already in use!'
+  },
+  NO_ITEM: {
+    code: 400,
+    message: 'No {entity} in query!',
+  },
+  ITEM_NOT_FOUND: {
+    code: 404,
+    message: '{entity} {id} not found!',
+  },
+  INVALID_INVOICES: {
+    code: 500,
+    message: 'Invalid invoices!'
+  },
+  NO_TEMPLATES: {
+    code: 500,
+    message: 'No render templates defined!',
+  },
+  TIMEOUT: {
+    code: 500,
+    message: 'Request timeout, API not responding!',
+  },
+};
+export type OrderingOperationStatusCodes = OperationStatusCodes<typeof OrderingOperationStatusCodes>
 
 export class OrderingService
   extends AccessControlledServiceBase<OrderListResponse, OrderList>
@@ -241,116 +296,6 @@ export class OrderingService
   }
 
   private readonly urns = DefaultUrns;
-  private readonly status_codes = {
-    OK: {
-      code: 200,
-      message: 'OK',
-    },
-    ITEM_NOT_FOUND: {
-      code: 404,
-      message: '{entity} {id} not found!',
-    },
-    NO_LEGAL_ADDRESS: {
-      code: 404,
-      message: '{entity} {id} has no legal address!',
-    },
-    NO_SHIPPING_ADDRESS: {
-      code: 404,
-      message: '{entity} {id} has no shipping address!',
-    },
-    NOT_SUBMITTED: {
-      code: 400,
-      message: '{entity} {id} expected to be submitted!',
-    },
-    NO_ITEM: {
-      code: 400,
-      message: '{entity} {id} has no item in query',
-    },
-    NO_AMOUNT: {
-      code: 400,
-      message: '{entity} {id} amount is missing',
-    },
-    NO_PHYSICAL_ITEM: {
-      code: 207,
-      message: '{entity} {id} includes no physical item!',
-    },
-    IN_HOMOGEN_INVOICE: {
-      code: 400,
-      message: '{entity} {id} must have identical customer_id and shop_id to master {entity}!',
-    },
-    SOLUTION_NOT_FOUND: {
-      code: 404,
-      message: 'Solution for {entity} {id} not found!',
-    },
-    SUB_SERVICE_ERROR: {
-      code: 500,
-      message: 'Order {id} rejected due to errors in {entity}: {details}!'
-    },
-    CONTENT_NOT_SUPPORTED: {
-      code: 400,
-      message: '{entity} {id}: Content type {details} is not supported!',
-    },
-    PROTOCOL_NOT_SUPPORTED: {
-      code: 400,
-      message: '{entity} {id}: Protocol of {details} is not supported!',
-    },
-    FETCH_FAILED: {
-      code: 500,
-      message: '{entity} {id}: {details}!',
-    },
-    NO_TEMPLATE_BODY: {
-      code: 500,
-      message: 'No body defined in template {id}!',
-    },
-    OUT_OF_STOCK: {
-      code: 400,
-      message: 'The following {entity} are out of stock {id}!',
-    },
-    OVERBOOKED: {
-      code: 207,
-      message: 'Warning: The following {entity} are overbooked {id}!',
-    },
-  };
-
-  protected readonly operation_status_codes = {
-    SUCCESS: {
-      code: 200,
-      message: 'SUCCESS',
-    },
-    PARTIAL: {
-      code: 207,
-      message: 'Patrial execution including errors!',
-    },
-    LIMIT_EXHAUSTED: {
-      code: 500,
-      message: 'Query limit 1000 exhausted!',
-    },
-    CONFLICT: {
-      code: 409,
-      message: 'Resource conflict, ID already in use!'
-    },
-    NO_ITEM: {
-      code: 400,
-      message: 'No {entity} in query!',
-    },
-    ITEM_NOT_FOUND: {
-      code: 404,
-      message: '{entity} {id} not found!',
-    },
-    INVALID_INVOICES: {
-      code: 500,
-      message: 'Invalid invoices!'
-    },
-    NO_TEMPLATES: {
-      code: 500,
-      message: 'No render templates defined!',
-    },
-    TIMEOUT: {
-      code: 500,
-      message: 'Request timeout, API not responding!',
-    },
-  };
-
   protected readonly tech_user: Subject;
   protected readonly emitters: Record<string, string>;
   protected readonly product_service?: Client<ProductServiceDefinition>;
@@ -367,6 +312,14 @@ export class OrderingService
     shipping: 'shipping',
     billing: 'billing',
   };
+
+  protected override get operationStatusCodes(): OrderingOperationStatusCodes {
+    return super.operationStatusCodes;
+  }
+
+  protected override get statusCodes(): OrderingStatusCodes {
+    return super.statusCodes;
+  }
 
   get entityName() {
     return this.name;
@@ -400,13 +353,13 @@ export class OrderingService
       ...cfg.get('urns'),
       ...cfg.get('authentication:urns'),
     };
-    this.status_codes = {
-      ...this.status_codes,
-      ...cfg.get('statusCodes')
+    super.statusCodes = {
+      ...OrderingStatusCodes,
+      ...cfg?.get('statusCodes'),
     };
-    this.operation_status_codes = {
-      ...this.operation_status_codes,
-      ...cfg.get('operationStatusCodes'),
+    super.operationStatusCodes = {
+      ...OrderingOperationStatusCodes,
+      ...cfg?.get('operationStatusCodes'),
     };
     this.contact_point_type_ids = {
       ...this.contact_point_type_ids,
@@ -845,7 +798,7 @@ export class OrderingService
       throw createStatusCode(
         product_id,
         'ProductVariant',
-        this.status_codes.ITEM_NOT_FOUND,
+        this.statusCodes.ITEM_NOT_FOUND,
         `${product_id}:${variant_id}`,
       );
     }
@@ -881,7 +834,7 @@ export class OrderingService
         throw createStatusCode(
           product_id,
           'ProductVariant',
-          this.status_codes.ITEM_NOT_FOUND,
+          this.statusCodes.ITEM_NOT_FOUND,
           `${product_id}:${variant_id}`
         );
       }
@@ -924,7 +877,7 @@ export class OrderingService
       throw createStatusCode(
         product_id,
         'Product',
-        this.status_codes.ITEM_NOT_FOUND,
+        this.statusCodes.ITEM_NOT_FOUND,
       );
     }
   };
@@ -940,7 +893,7 @@ export class OrderingService
 
     if (order_ids.length > 1000) {
       throw createOperationStatusCode(
-        this.operation_status_codes.LIMIT_EXHAUSTED,
+        this.operationStatusCodes.LIMIT_EXHAUSTED,
         'fulfillment',
       );
     }
@@ -1052,7 +1005,7 @@ export class OrderingService
     if (!aggregation?.items?.length) {
       return {
         operation_status: createOperationStatusCode(
-          this.operation_status_codes.NO_ITEM,
+          this.operationStatusCodes.NO_ITEM,
           'order',
         )
       };
@@ -1145,7 +1098,7 @@ export class OrderingService
           throw createStatusCode(
             order.payload.id,
             'Shop',
-            this.status_codes.NO_LEGAL_ADDRESS,
+            this.statusCodes.NO_LEGAL_ADDRESS,
             order.payload.shop_id,
           )
         };
@@ -1154,7 +1107,7 @@ export class OrderingService
           throwStatusCode(
             order?.payload.id,
             'Order',
-            this.status_codes.NO_SHIPPING_ADDRESS,
+            this.statusCodes.NO_SHIPPING_ADDRESS,
             order?.payload.id,
           );
         }
@@ -1184,7 +1137,7 @@ export class OrderingService
           throw createStatusCode(
             order?.payload.id,
             'Order',
-            this.status_codes.NO_ITEM,
+            this.statusCodes.NO_ITEM,
             order?.payload.id,
           );
         }
@@ -1224,7 +1177,7 @@ export class OrderingService
           )
         );
 
-        if (!has_shop_as_owner ) {
+        if (!has_shop_as_owner && shop.organization_id?.length) {
           order.payload.meta.owners.push(
             {
               id: this.urns.ownerIndicatoryEntity,
@@ -1239,7 +1192,7 @@ export class OrderingService
           );
         }
 
-        if (!has_customer_as_owner ) {
+        if (!has_customer_as_owner && customer_instance?.length) {
           order.payload.meta.owners.push(
             {
               id: this.urns.ownerIndicatoryEntity,
@@ -1257,7 +1210,7 @@ export class OrderingService
         order.status ??= createStatusCode(
           order?.payload.id,
           'Order',
-          this.status_codes.OK,
+          this.statusCodes.SUCCESS,
           order?.payload.id,
         );
         return order;
@@ -1271,10 +1224,10 @@ export class OrderingService
     const operation_status = items.some(
       a => a.status?.code >= 300
     ) ? createOperationStatusCode(
-        this.operation_status_codes.PARTIAL,
+        this.operationStatusCodes.MULTI_STATUS,
         'order',
       ) : createOperationStatusCode(
-        this.operation_status_codes.SUCCESS,
+        this.operationStatusCodes.SUCCESS,
         'order',
       );
 
@@ -1349,7 +1302,7 @@ export class OrderingService
           item.status = createStatusCode(
             item.payload?.id ?? item.status?.id,
             'ProductVariants',
-            overbooking ? this.status_codes.OVERBOOKED : this.status_codes.OUT_OF_STOCK,
+            overbooking ? this.statusCodes.OVERBOOKED : this.statusCodes.OUT_OF_STOCK,
             out_of_stock.map(item => `${item.product_id}:${item.variant_id}`).join(', ')
           );
         }
@@ -1389,7 +1342,7 @@ export class OrderingService
               item.status = createStatusCode(
                 item.payload?.id,
                 'ProductVariant',
-                this.status_codes.ITEM_NOT_FOUND,
+                this.statusCodes.ITEM_NOT_FOUND,
                 `${position.product_id}:${position.variant_id}`,
               );
             }
@@ -1586,8 +1539,8 @@ export class OrderingService
       items: results,
       total_count: results.length,
       operation_status: results.some(item => item.status?.code >= 300)
-        ? this.operation_status_codes.PARTIAL
-        : this.operation_status_codes.SUCCESS
+        ? this.operationStatusCodes.MULTI_STATUS
+        : this.operationStatusCodes.SUCCESS
     } as OrderListResponse;
   }
 
@@ -1606,7 +1559,7 @@ export class OrderingService
   }
 
   @resolves_subject()
-  @injects_meta_data(MetaDataInjector)
+  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -1646,7 +1599,7 @@ export class OrderingService
   }
 
   @resolves_subject()
-  @injects_meta_data(MetaDataInjector)
+  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -1726,7 +1679,7 @@ export class OrderingService
                     order.status = createStatusCode(
                       id,
                       'Fulfillment',
-                      this.status_codes.SUB_SERVICE_ERROR,
+                      this.statusCodes.SUB_SERVICE_ERROR,
                       id,
                       fulfillment.status?.message,
                     );
@@ -1780,7 +1733,7 @@ export class OrderingService
                     order.status = createStatusCode(
                       id,
                       'Fulfillment',
-                      this.status_codes.SUB_SERVICE_ERROR,
+                      this.statusCodes.SUB_SERVICE_ERROR,
                       id,
                       fulfillment.status?.message,
                     );
@@ -1850,7 +1803,7 @@ export class OrderingService
                       order.status = createStatusCode(
                         id,
                         'Invoicing',
-                        this.status_codes.SUB_SERVICE_ERROR,
+                        this.statusCodes.SUB_SERVICE_ERROR,
                         id,
                         item.status?.message,
                       );
@@ -1916,7 +1869,7 @@ export class OrderingService
                       order.status = createStatusCode(
                         id,
                         'Invoicing',
-                        this.status_codes.SUB_SERVICE_ERROR,
+                        this.statusCodes.SUB_SERVICE_ERROR,
                         id,
                         item.status?.message,
                       );
@@ -2152,7 +2105,7 @@ export class OrderingService
     if (!request.items?.length) {
       return {
         items: [],
-        operation_status: this.operation_status_codes.SUCCESS
+        operation_status: this.operationStatusCodes.SUCCESS
       }
     }
 
@@ -2192,7 +2145,7 @@ export class OrderingService
           response.status = createStatusCode(
             item.order_id,
             this.entityName,
-            this.status_codes.ITEM_NOT_FOUND,
+            this.statusCodes.ITEM_NOT_FOUND,
             item.order_id,
           );
           return false;
@@ -2222,7 +2175,7 @@ export class OrderingService
           response.status = createStatusCode(
             item.order_id,
             this.entityName,
-            this.status_codes.NO_PHYSICAL_ITEM,
+            this.statusCodes.NO_PHYSICAL_ITEM,
             item.order_id,
           );
         }
@@ -2332,9 +2285,10 @@ export class OrderingService
         const status = solution?.status ?? createStatusCode(
           item.order_id,
           'Order',
-          this.status_codes.SOLUTION_NOT_FOUND,
+          this.statusCodes.SOLUTION_NOT_FOUND,
           item.order_id,
         );
+
         delete item.sender_address?.address?.meta;
         delete order.payload?.billing_address?.address?.meta;
         delete order.payload?.shipping_address?.address?.meta;
@@ -2360,6 +2314,11 @@ export class OrderingService
                   recipient: order.payload?.shipping_address,
                 } as Packaging,
                 total_amounts: solution.solutions[0].amounts,
+                meta: {
+                  created_by: request.subject?.id,
+                  modified_by: request.subject?.id,
+                  owners: order.payload.meta.owners,
+                },
               } : undefined,
           status: {
             ...status,
@@ -2382,7 +2341,7 @@ export class OrderingService
       if (!request.items?.length) {
         return {
           items: [],
-          operation_status: this.operation_status_codes.SUCCESS
+          operation_status: this.operationStatusCodes.SUCCESS
         }
       }
 
@@ -2442,7 +2401,7 @@ export class OrderingService
         total_count: valids.length + invalids.length,
         operation_status: invalids.length
           ? createOperationStatusCode(
-            this.operation_status_codes.PARTIAL,
+            this.operationStatusCodes.MULTI_STATUS,
             'fulfillment',
           )
           : evaluated?.operation_status,
@@ -2463,7 +2422,7 @@ export class OrderingService
       if (!request.items?.length) {
         return {
           items: [],
-          operation_status: this.operation_status_codes.SUCCESS
+          operation_status: this.operationStatusCodes.SUCCESS
         }
       }
 
@@ -2523,7 +2482,7 @@ export class OrderingService
         total_count: valids.length + invalids.length,
         operation_status: invalids.length
           ? createOperationStatusCode(
-            this.operation_status_codes.PARTIAL,
+            this.operationStatusCodes.MULTI_STATUS,
             'fulfillment',
           )
           : created?.operation_status,
@@ -2550,7 +2509,7 @@ export class OrderingService
   ): Promise<FulfillmentListResponse> {
     if (!request.items?.length) {
       return {
-        operation_status: this.operation_status_codes.SUCCESS
+        operation_status: this.operationStatusCodes.SUCCESS
       }
     }
 
@@ -2627,7 +2586,7 @@ export class OrderingService
 
       return {
         status: prototypes?.map(item => item.status),
-        operation_status: this.operation_status_codes.SUCCESS,
+        operation_status: this.operationStatusCodes.SUCCESS,
       };
     }
     catch (e) {
@@ -2678,7 +2637,7 @@ export class OrderingService
               status: master?.status ?? createStatusCode(
                 invoice.sections?.[0]?.order_id,
                 this.entityName,
-                this.status_codes.ITEM_NOT_FOUND,
+                this.statusCodes.ITEM_NOT_FOUND,
                 invoice.sections?.[0]?.order_id,
               )
             };
@@ -2693,7 +2652,7 @@ export class OrderingService
                 status: order?.status ?? createStatusCode(
                   section.order_id,
                   this.entityName,
-                  this.status_codes.ITEM_NOT_FOUND,
+                  this.statusCodes.ITEM_NOT_FOUND,
                   section.order_id,
                 )
               };
@@ -2706,7 +2665,7 @@ export class OrderingService
                 status: createStatusCode(
                   section.order_id,
                   typeof(order.payload),
-                  this.status_codes.IN_HOMOGEN_INVOICE,
+                  this.statusCodes.IN_HOMOGEN_INVOICE,
                   section.order_id,
                 ),
               };
@@ -2730,7 +2689,7 @@ export class OrderingService
                   amount: item.amount ?? throwStatusCode(
                     item.id,
                     'Product',
-                    this.status_codes.NO_AMOUNT,
+                    this.statusCodes.NO_AMOUNT,
                     item.id
                   ),
                   product_item: {
@@ -2760,7 +2719,7 @@ export class OrderingService
                   amount: a.amount ?? throwStatusCode(
                     a.id,
                     'FulfillmentProduct',
-                    this.status_codes.NO_AMOUNT,
+                    this.statusCodes.NO_AMOUNT,
                     a.id
                   ),
                   fulfillment_item: {
@@ -2817,7 +2776,7 @@ export class OrderingService
             status: createStatusCode(
               master.payload.id,
               'Invoice',
-              this.status_codes.OK,
+              this.statusCodes.SUCCESS,
               master.payload.id,
             ),
           };
@@ -2840,7 +2799,7 @@ export class OrderingService
     try {
       if (!request.items?.length) {
         return {
-          operation_status: this.operation_status_codes.SUCCESS
+          operation_status: this.operationStatusCodes.SUCCESS
         }
       }
 
@@ -2859,7 +2818,7 @@ export class OrderingService
         return {
           items: prototypes,
           total_count: prototypes.length,
-          operation_status: this.operation_status_codes.INVALID_INVOICES,
+          operation_status: this.operationStatusCodes.INVALID_INVOICES,
         };
       }
 
@@ -2963,7 +2922,7 @@ export class OrderingService
     try {
       if (!request.items?.length) {
         return {
-          operation_status: this.operation_status_codes.SUCCESS
+          operation_status: this.operationStatusCodes.SUCCESS
         }
       }
 
@@ -2991,7 +2950,7 @@ export class OrderingService
 
       return {
         status: prototypes?.map(item => item.status),
-        operation_status: this.operation_status_codes.SUCCESS,
+        operation_status: this.operationStatusCodes.SUCCESS,
       };
     }
     catch (e) {
@@ -3021,7 +2980,7 @@ export class OrderingService
       throw createStatusCode(
         undefined,
         'Template',
-        this.status_codes.PROTOCOL_NOT_SUPPORTED,
+        this.statusCodes.PROTOCOL_NOT_SUPPORTED,
         undefined,
         url,
       );
@@ -3062,7 +3021,7 @@ export class OrderingService
           throw createStatusCode(
             template.id,
             'Template',
-            this.status_codes.CONTENT_NOT_SUPPORTED,
+            this.statusCodes.CONTENT_NOT_SUPPORTED,
             template.id,
             L.l10n.content_type,
           );
@@ -3116,7 +3075,7 @@ export class OrderingService
       }
       else {
         throw createOperationStatusCode(
-          this.operation_status_codes.NO_TEMPLATES
+          this.operationStatusCodes.NO_TEMPLATES
         );
       }
     }
@@ -3136,7 +3095,7 @@ export class OrderingService
         ) ?? throwStatusCode<RenderRequest_Template[]>(
           item.id,
           "Template",
-          this.status_codes.NO_TEMPLATE_BODY,
+          this.statusCodes.NO_TEMPLATE_BODY,
           template.id,
         ))
       )
