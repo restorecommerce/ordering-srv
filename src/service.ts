@@ -65,6 +65,8 @@ import {
   FulfillmentListResponse,
   FulfillmentResponse,
   Packaging,
+  Fulfillment,
+  FulfillmentState,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment.js';
 import {
   FulfillmentProductServiceDefinition,
@@ -78,6 +80,7 @@ import {
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/filter.js';
 import {
   Filter_ValueType,
+  FilterOp_Operator,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import {
   StatusListResponse
@@ -88,7 +91,9 @@ import {
   Section,
   Position,
   InvoiceServiceDefinition,
-  InvoiceList
+  InvoiceList,
+  Invoice,
+  PaymentState
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/invoice.js';
 import {
   Subject
@@ -325,9 +330,11 @@ export class OrderingService
     return this.name;
   }
 
+  /*
   get instance_type() {
-    return this.urns.instanceType;
+    return this.urns.order;
   }
+    */
 
   constructor(
     protected readonly orderingTopic: Topic,
@@ -901,21 +908,13 @@ export class OrderingService
     fulfillments ??= await this.fulfillment_service!.read(
       {
         filters: [{
-          filters: [
-            {
-              field: 'references[*].instance_type',
-              operation: Filter_Operation.in,
-              value: this.instance_type,
-            },
-            {
-              field: 'references[*].instance_id',
-              operation: Filter_Operation.in,
-              value: JSON.stringify(order_ids),
-              type: Filter_ValueType.ARRAY
-            }
-          ]
+          filters: order_ids?.map(id => ({
+            field: 'references[*].instance_id',
+            operation: Filter_Operation.in,
+            value: id,
+          })),
+          operator: FilterOp_Operator.or,
         }],
-        limit: order_ids.length,
         subject,
       },
       context,
@@ -930,10 +929,10 @@ export class OrderingService
       }
     );
     
-    return fulfillments.reduce(
+    return fulfillments?.reduce(
       (a, b) => {
         b.payload?.references.filter(
-          r => r.instance_type === this.instance_type
+          r => r.instance_type === this.urns.order
         ).forEach(
           r => {
             const c = a[r.instance_id];
@@ -1673,7 +1672,9 @@ export class OrderingService
             r => {
               r.items?.forEach(
                 fulfillment => {
-                  const id = fulfillment.payload?.references?.[0]?.instance_id ?? fulfillment.status?.id;
+                  const id = fulfillment.payload?.references?.find(
+                    r => r.instance_type === this.urns.order
+                  )?.instance_id ?? fulfillment.status?.id;
                   const order = response_map[id];
                   if (order && fulfillment.status?.code >= 300) {
                     order.status = createStatusCode(
@@ -1727,7 +1728,9 @@ export class OrderingService
             r => {
               r.items?.forEach(
                 fulfillment => {
-                  const id = fulfillment.payload?.references?.[0]?.instance_id ?? fulfillment.status?.id;
+                  const id = fulfillment.payload?.references?.find(
+                    r => r.instance_type === this.urns.order
+                  )?.instance_id ?? fulfillment.status?.id;
                   const order = response_map[id];
                   if (order && fulfillment.status?.code >= 300) {
                     order.status = createStatusCode(
@@ -1797,7 +1800,9 @@ export class OrderingService
                 response.invoices.push(...r.items);
                 r.items.forEach(
                   item => {
-                    const id = item.payload?.references?.[0]?.instance_id;
+                    const id = item.payload?.references?.find(
+                      r => r.instance_type === this.urns.order
+                    )?.instance_id;
                     const order = response_map[id];
                     if (order && item.status?.code >= 300) {
                       order.status = createStatusCode(
@@ -1863,7 +1868,9 @@ export class OrderingService
                 response.invoices.push(...r.items);
                 r.items.forEach(
                   item => {
-                    const id = item.payload?.references?.[0]?.instance_id;
+                    const id = item.payload?.references?.find(
+                      r => r.instance_type === this.urns.order
+                    )?.instance_id;
                     const order = response_map[id];
                     if (order && item.status?.code >= 300) {
                       order.status = createStatusCode(
@@ -1898,9 +1905,13 @@ export class OrderingService
           this.logger?.debug('Send invoices on submit...');
           const invoices = response.invoices?.filter(
             item => {
-              const setting = settings.get(item.payload?.references?.[0]?.instance_id);
+              const setting = settings.get(item.payload?.references?.find(
+                r => r.instance_type === this.urns.order
+              )?.instance_id);
               return item.status?.code < 300
-                && item.payload?.references?.[0]?.instance_id
+                && item.payload?.references?.find(
+                  r => r.instance_type === this.urns.order
+                )?.instance_id
                 && !setting?.shop_invoice_send_disabled;
             }
           ).map(
@@ -2113,7 +2124,7 @@ export class OrderingService
       (a, b) => {
         a[b.order_id] = {
           reference: {
-            instance_type: this.instance_type,
+            instance_type: this.urns.order,
             instance_id: b.order_id,
           }
         };
@@ -2182,7 +2193,7 @@ export class OrderingService
 
         const query: FulfillmentSolutionQuery = {
           reference: {
-            instance_type: this.instance_type,
+            instance_type: this.urns.order,
             instance_id: order.payload.id,
           },
           recipient: order.payload?.shipping_address,
@@ -2301,7 +2312,7 @@ export class OrderingService
                 customer_id: order.payload.customer_id,
                 user_id: order.payload.user_id,
                 references: [{
-                  instance_type: this.instance_type,
+                  instance_type: this.urns.order,
                   instance_id: item.order_id,
                 }],
                 packaging: {
@@ -2750,12 +2761,25 @@ export class OrderingService
               user_id: master.payload.user_id,
               customer_id: master.payload.customer_id,
               shop_id: master.payload.shop_id,
-              references: invoice.sections.map(
-                section => ({
-                  instance_type: this.instance_type,
-                  instance_id: section.order_id,
-                })
-              ),
+              references: invoice.sections?.flatMap(
+                section => [
+                  [{
+                    instance_type: this.urns.order,
+                    instance_id: section.order_id,
+                  }],
+                  section.selected_fulfillments?.map(
+                    f => ({
+                      instance_type: this.urns.fulfillment,
+                      instance_id: f.fulfillment_id,
+                    })
+                  ) ?? fulfillment_map[section.order_id]?.map(
+                    f => ({
+                      instance_type: this.urns.fulfillment,
+                      instance_id: f.payload?.id,
+                    })
+                  ),
+                ]
+              )?.flat().filter(Boolean),
               customer_remark: master.payload.customer_remark,
               customer_order_number: master.payload.customer_order_nr,
               customer_vat_id: master.payload.customer_vat_id,
@@ -3189,5 +3213,62 @@ export class OrderingService
       context
     );
     return status?.operation_status;
+  }
+
+  public async checkCompletion(
+    msg: Invoice | Fulfillment
+  ) {
+    const ids = msg.references.filter(
+      ref => ref.instance_type === this.urns.order
+    ).map(
+      ref => ref.instance_id
+    );
+
+    const fulfillments_complete = await this.getFulfillmentMap(
+      ids,
+      this.tech_user,
+    ).then(
+      fm => Object.values(fm).flat().every(
+        f => f.payload?.fulfillment_state === FulfillmentState.COMPLETE
+      )
+    );
+
+    const invoices_payed = await this.invoice_service?.read(
+      {
+        filters: [{
+          filters: ids?.map(id => ({
+            field: 'references[*].instance_id',
+            operation: Filter_Operation.in,
+            value: id,
+          })),
+          operator: FilterOp_Operator.or,
+        }],
+        subject: this.tech_user,
+      },
+    ).then(
+      response => {
+        if (response.operation_status?.code < 300) {
+          return response.items;
+        }
+        else {
+          throw response.operation_status;
+        }
+      }
+    ).then(
+      invoices => invoices.every(
+        i => i.payload?.payment_state === PaymentState.PAYED
+      )
+    );
+
+    if (fulfillments_complete && invoices_payed) {
+      await this.superUpdate({
+        items: ids.map(id => ({
+          id,
+          order_state: OrderState.COMPLETED
+        })),
+        subject: this.tech_user,
+        total_count: ids.length,
+      });
+    }
   }
 }

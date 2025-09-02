@@ -164,6 +164,12 @@
       "renderResponse": {
         "messageObject": "io.restorecommerce.rendering.RenderResponseList"
       },
+      "fulfillmentModified": {
+        "messageObject": "io.restorecommerce.fulfillment.Fulfillment"
+      },
+      "invoiceModified": {
+        "messageObject": "io.restorecommerce.invoice.Invoice"
+      },
       "sendEmail": {
         "messageObject": "io.restorecommerce.notification_req.NotificationReq"
       },
@@ -201,6 +207,18 @@
             "fulfillOrders": "handleFulfillOrders",
             "withdrawOrders": "handleWithdrawOrders",
             "cancelOrders": "handleCancelOrders"
+          }
+        },
+        "fulfillment.resource": {
+          "topic": "io.restorecommerce.fulfillment.resource",
+          "events": {
+            "fulfillmentModified": "handleStateUpdate"
+          }
+        },
+        "invoicing.resource": {
+          "topic": "io.restorecommerce.invoicing.resource",
+          "events": {
+            "invoiceModified": "handleStateUpdate"
           }
         }
       }
@@ -311,7 +329,9 @@
     "health": "grpc-health-v1"
   },
   "urns": {
-    "instanceType": "urn:restorecommerce:acs:model:order:Order",
+    "order": "urn:restorecommerce:acs:model:order:Order",
+    "fulfillment": "urn:restorecommerce:acs:model:fulfillment:Fulfillment",
+    "invoice": "urn:restorecommerce:acs:model:invoice:Invoice",
     "shop_fulfillment_create_enabled": "urn:restorecommerce:shop:setting:order:submit:fulfillment:create:enabled",
     "shop_invoice_create_enabled": "urn:restorecommerce:shop:setting:order:submit:invoice:create:enabled",
     "shop_invoice_render_enabled": "urn:restorecommerce:shop:setting:order:submit:invoice:render:enabled",

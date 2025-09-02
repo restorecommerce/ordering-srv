@@ -28,6 +28,12 @@ import {
   protoMetadata as RenderingMeta
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/rendering.js';
 import {
+  protoMetadata as FulfillmentMeta
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/fulfillment.js';
+import {
+  protoMetadata as InvoiceMeta
+} from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/invoice.js';
+import {
   protoMetadata as NotificationReqMeta
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/notification_req.js';
 import { ServiceConfig, createServiceConfig } from '@restorecommerce/service-config';
@@ -48,10 +54,19 @@ registerProtoMeta(
   ResourceBaseMeta,
   RenderingMeta,
   NotificationReqMeta,
+  FulfillmentMeta,
+  InvoiceMeta,
 );
 
 export type Handler = (msg: any, context: any, config: any, eventName: string) => any;
 export type HandlerMap = Record<string, Handler>;
+export type HandlerError = {
+  code?: number,
+  message?: string,
+  details?: string,
+  stack?: Error['stack'],
+};
+
 export class Worker {
   private _cfg?: ServiceConfig;
   private _offsetStore?: OffsetStore;
@@ -133,67 +148,81 @@ export class Worker {
     handleCreateOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
       return this.orderingService?.create(msg, context).then(
         () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}:`, { error })
+        error => this.handleError(eventName, error),
       );
     },
     handleUpdateOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
       return this.orderingService?.update(msg, context).then(
         () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
+        error => this.handleError(eventName, error),
       );
     },
     handleUpsertOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
       return this.orderingService?.upsert(msg, context).then(
         () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
+        error => this.handleError(eventName, error),
       );
     },
     handleSubmitOrders: (msg: OrderList, context: any, config: any, eventName: string) => {
       return this.orderingService?.submit(msg, context).then(
         () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
+        error => this.handleError(eventName, error),
       );
     },
     handleFulfillOrders: (msg: FulfillmentRequestList, context: any, config: any, eventName: string) => {
       return this.orderingService?.createFulfillment(msg, context).then(
         () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
+        error => this.handleError(eventName, error),
       );
     },
     handleWithdrawOrders: (msg: OrderIdList, context: any, config: any, eventName: string) => {
       return this.orderingService?.withdraw(msg, context).then(
         () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
+        error => this.handleError(eventName, error),
       );
     },
     handleCancelOrders: (msg: OrderIdList, context: any, config: any, eventName: string) => {
       return this.orderingService?.cancel(msg, context).then(
         () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
+        error => this.handleError(eventName, error),
       );
     },
     handleDeleteOrders: (msg: any, context: any, config: any, eventName: string) => {
       return this.orderingService?.delete(msg, context).then(
         () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
+        error => this.handleError(eventName, error),
       );
     },
     handleRenderResponse: (msg: any, context: any, config: any, eventName: string) => {
       return this.orderingService?.handleRenderResponse(msg).then(
         () => this.logger?.info(`Event ${eventName} handled.`),
-        error => this.logger?.error(`Error while handling event ${eventName}: `, { error })
+        error => this.handleError(eventName, error),
+      );
+    },
+    handleStateUpdate: (msg: any, context: any, config: any, eventName: string) => {
+      return this.orderingService?.checkCompletion(msg).then(
+        () => this.logger?.info(`Event ${eventName} handled.`),
+        error => this.handleError(eventName, error),
       );
     },
     handleQueuedJob: (msg: any, context: any, config: any, eventName: string) => {
       return this.serviceActions?.get(msg?.type)?.(msg?.data?.payload, context, config, msg?.type).then(
         () => this.logger?.info(`Job ${msg?.type} done.`),
-        (error: any) => this.logger?.error(`Job ${msg?.type} failed: `, { error })
+        (error: HandlerError) => {
+          const { code, message, details, stack } = error; 
+          this.logger?.error(`Job ${msg?.type} failed:`, { code, message, details, stack })
+        }
       );
     },
     handleCommand: (msg: any, context: any, config: any, eventName: string) => {
       return this.orderingCommandInterface?.command(msg, context);
     }
   };
+
+  handleError(eventName?: string, error?: HandlerError) {
+    const { code, message, details, stack } = error;
+    this.logger?.error(`Error while handling event ${eventName}:`, { code, message, details, stack })
+  }
 
   async start(cfg?: ServiceConfig, logger?: Logger): Promise<any> {
     // Load config

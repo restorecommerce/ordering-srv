@@ -191,7 +191,9 @@ export const toObjectListMap = <T extends Entity>(items: T[]): Record<string, T[
 ) ?? {};
 
 export const DefaultUrns = {
-  instanceType: 'urn:restorecommerce:acs:model:order:Order',
+  order: 'urn:restorecommerce:acs:model:order:Order',
+  fulfillment: 'urn:restorecommerce:acs:model:fulfillment:Fulfillment',
+  invoice: 'urn:restorecommerce:acs:model:invoice:Invoice',
   ownerIndicatoryEntity: 'urn:restorecommerce:acs:names:ownerIndicatoryEntity',
   ownerInstance: 'urn:restorecommerce:acs:names:ownerInstance',
   organization: 'urn:restorecommerce:acs:model:organization.Organization',
