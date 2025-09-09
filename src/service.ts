@@ -318,23 +318,21 @@ export class OrderingService
     billing: 'billing',
   };
 
-  protected override get operationStatusCodes(): OrderingOperationStatusCodes {
+  override get operationStatusCodes(): OrderingOperationStatusCodes {
     return super.operationStatusCodes;
   }
 
-  protected override get statusCodes(): OrderingStatusCodes {
+  override get statusCodes(): OrderingStatusCodes {
     return super.statusCodes;
+  }
+
+  override set operationStatusCodes(value: OrderingOperationStatusCodes) {
+    super.operationStatusCodes = value;
   }
 
   get entityName() {
     return this.name;
   }
-
-  /*
-  get instance_type() {
-    return this.urns.order;
-  }
-    */
 
   constructor(
     protected readonly orderingTopic: Topic,
