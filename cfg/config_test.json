@@ -15,6 +15,18 @@
   "authorization": {
     "client": null
   },
+  "events": {
+    "kafka": {
+      "provider": "kafka",
+      "groupId": "restore-ordering-srv-test",
+      "kafka": {
+        "clientId": "restore-ordering-srv-test",
+        "brokers": [
+          "localhost:29092"
+        ]
+      }
+    }
+  },
   "server": {
     "transports": [
       {

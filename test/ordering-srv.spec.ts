@@ -73,7 +73,6 @@ describe('The Ordering Service:', () => {
       topics?.on('orderModified', onOrderUpdated),
       topics?.on('orderSubmitted', onOrderSubmitted),
     ]);
-    await topics?.consumer?.run();
   });
 
   after(async function() {

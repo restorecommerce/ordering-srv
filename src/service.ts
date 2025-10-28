@@ -22,8 +22,6 @@ import {
   DefaultResourceFactory,
   DefaultMetaDataInjector,
   access_controlled_function,
-  injects_meta_data,
-  resolves_subject,
 } from '@restorecommerce/acs-client';
 import { Topic } from '@restorecommerce/kafka-client';
 import {
@@ -79,7 +77,6 @@ import {
   Filter_Operation
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/filter.js';
 import {
-  Filter_ValueType,
   FilterOp_Operator,
 } from '@restorecommerce/rc-grpc-clients/dist/generated-server/io/restorecommerce/resource_base.js';
 import {
@@ -345,7 +342,7 @@ export class OrderingService
   ) {
     super(
       cfg.get('database:main:entities:0') ?? 'order',
-      orderingTopic as any,
+      orderingTopic,
       db,
       cfg,
       logger,
@@ -1555,8 +1552,6 @@ export class OrderingService
     return super.superCreate(request, context);
   }
 
-  @resolves_subject()
-  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -1595,14 +1590,11 @@ export class OrderingService
     }
   }
 
-  @resolves_subject()
-  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('execution.submitOrders'),
-    database: 'arangoDB',
     useCache: true,
   })
   public async submit(
@@ -2036,7 +2028,6 @@ export class OrderingService
     }
   }
 
-  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
@@ -2067,13 +2058,11 @@ export class OrderingService
     }
   }
 
-  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('execution.withdrawOrder'),
-    database: 'arangoDB',
     useCache: true,
   })
   public async withdraw(
@@ -2232,13 +2221,10 @@ export class OrderingService
     };
   }
 
-  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.READ,
     operation: Operation.whatIsAllowed,
-    context: DefaultACSClientContextFactory,
     resource: [{ resource: 'order' }],
-    database: 'arangoDB',
     useCache: true,
   })
   public async queryFulfillmentSolution(
@@ -2502,14 +2488,10 @@ export class OrderingService
     }
   }
 
-  @resolves_subject()
-  @injects_meta_data()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
-    context: DefaultACSClientContextFactory,
     resource: DefaultResourceFactory('execution.evaluateFulfillment'),
-    database: 'arangoDB',
     useCache: true,
   })
   public async evaluateFulfillment(
@@ -2541,13 +2523,11 @@ export class OrderingService
     );
   }
 
-  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('execution.createFulfillment'),
-    database: 'arangoDB',
     useCache: true,
   })
   public async createFulfillment(
@@ -2557,13 +2537,11 @@ export class OrderingService
     return this._createFulfillment(request, context);
   }
 
-  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('execution.triggerFulfillment'),
-    database: 'arangoDB',
     useCache: true,
   })
   public async triggerFulfillment(
@@ -2896,13 +2874,11 @@ export class OrderingService
     );
   };
 
-  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('execution.createInvoice'),
-    database: 'arangoDB',
     useCache: true,
   })
   public async createInvoice(
@@ -2912,13 +2888,11 @@ export class OrderingService
     return await this._createInvoice(request, context);
   };
 
-  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService?.ACSContextFactory,
     resource: DefaultResourceFactory('execution.renderInvoice'),
-    database: 'arangoDB',
     useCache: true,
   })
   public async renderInvoice(
@@ -2928,13 +2902,11 @@ export class OrderingService
     return await this._renderInvoice(request, context);
   };
 
-  @resolves_subject()
   @access_controlled_function({
     action: AuthZAction.EXECUTE,
     operation: Operation.isAllowed,
     context: OrderingService?.ACSContextFactory,
     resource: [{ resource: 'invoice' }],
-    database: 'arangoDB',
     useCache: true,
   })
   public async triggerInvoice(
