@@ -1,4 +1,4 @@
-import { Logger } from 'winston';
+import { Logger } from '@restorecommerce/logger';
 import { RedisClientType as RedisClient } from 'redis';
 import {
   Server,

@@ -110,7 +110,7 @@ import {
   ArrayResolver,
   ResourceMap,
 } from '@restorecommerce/resource-base-interface/lib/experimental/index.js';
-import * as _ from 'lodash-es';
+import { clone } from 'remeda';
 
 export type BigVAT = {
   tax_id: string;
@@ -696,7 +696,7 @@ export const packRenderData = (
   const resolved = {
     order: resolveOrder(
       aggregation,
-      _.cloneDeep(order)
+      clone(order)
     ),
   };
   const buffer = marshallProtobufAny(resolved);

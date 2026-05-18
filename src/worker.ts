@@ -245,32 +245,29 @@ export class Worker {
     this.redisClient = createClient(redisConfig);
     await this.redisClient.connect();
 
-    await Promise.all(Object.keys(kafkaCfg.topics).map(async key => {
+    for (const key of Object.keys(kafkaCfg.topics)) {
       const topicName = kafkaCfg.topics[key].topic;
       const topic = await this.events!.topic(topicName);
       const offsetValue = await this.offsetStore!.getOffset(topicName);
       logger?.info('subscribing to topic with offset value', topicName, offsetValue);
-      await Promise.all(
-        Object.entries(
-          (kafkaCfg.topics[key]?.events ?? {}) as { [key: string]: string }
-        ).map(
-          ([eventName, handler]) => {
-            const handle = this.handlers[handler];
-            if (handle) {
-              this.serviceActions?.set(eventName as string, handle);
-              return topic.on(
-                eventName as string,
-                handle,
-                { startingOffset: offsetValue }
-              );
-            }
-            else {
-              logger?.warn(`Topic Listener with handle name ${handler} not supported!`);
-            }
-          }
-        ));
+      for (const [eventName, handler] of Object.entries<string>(
+        (kafkaCfg.topics[key]?.events ?? {})
+      )) {
+        const handle = this.handlers[handler];
+        if (handle) {
+          this.serviceActions?.set(eventName as string, handle);
+          await topic.on(
+            eventName as string,
+            handle,
+            { startingOffset: offsetValue }
+          );
+        }
+        else {
+          logger?.warn(`Topic Listener with handle name ${handler} not supported!`);
+        }
+      }
       this.topics.set(key, topic);
-    }));
+    };
 
     // create server
     this.server = new Server(cfg.get('server'), logger);
