@@ -55,17 +55,15 @@
     "should": "^13.2.3"
   },
   "scripts": {
-    "start": "node lib/start.cjs",
+    "start": "node dist/start.cjs",
     "dev": "cross-env NODE_ENV=development nodemon --watch './src/**/*.ts' --exec node --loader ts-node/esm ./src/start.ts",
     "test": "npm run lint && vitest run",
     "lcov-report": "c8 report --reporter=lcov",
     "lint": "eslint src --fix",
-    "mocha": "cross-env NODE_ENV=test mocha --full-trace --exit --trace-warnings --exit",
-    "test-debug": "cross-env NODE_ENV=test mocha --full-trace --exit --trace-warnings --exit --inspect-brk",
     "build:es": "node esbuild.mjs",
-    "build:clean": "rimraf lib dist",
+    "build:clean": "rimraf dist",
     "build": "npm-run-all build:clean build:es",
-    "postbuild": "cp node_modules/@platformatic/wasm-utils/dist/native.wasm dist/",
+    "postbuild": "cp ./node_modules/@platformatic/wasm-utils/dist/native.wasm dist/",
     "prepare": "node -e \"try { require('husky').install() } catch (e) {}\""
   },
   "engines": {
