@@ -1,4 +1,4 @@
-import {} from 'mocha';
+import { it, describe, beforeAll, afterAll } from 'vitest';
 import should from 'should';
 import { Semaphore } from 'async-mutex';
 import { Client } from 'nice-grpc';
@@ -53,8 +53,7 @@ describe('The Ordering Service:', () => {
     orderSubmittedSemaphore.release(1);
   };
 
-  before(async function() {
-    this.timeout(30000);
+  beforeAll(async function() {
     mocking = await mockServices(cfg.get('client'));
     worker = await startWorker();
     events = await connectEvents();
@@ -73,10 +72,9 @@ describe('The Ordering Service:', () => {
       topics?.on('orderModified', onOrderUpdated),
       topics?.on('orderSubmitted', onOrderSubmitted),
     ]);
-  });
+  }, 30_000);
 
-  after(async function() {
-    this.timeout(30000);
+  afterAll(async function() {
     await Promise.allSettled([
       client?.delete({
         collection: true,
@@ -96,11 +94,10 @@ describe('The Ordering Service:', () => {
     ).finally(
       () => Promise.allSettled(mocking?.map(mock => mock?.stop()))
     );
-  });
+  }, 30_000);
 
   for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
     it(`should create valid orders by sample: ${sample_name}`, async function() {
-      this.timeout(5000);
       const response = await client.create(sample);
       should.equal(
         response.operationStatus?.code,
@@ -108,17 +105,15 @@ describe('The Ordering Service:', () => {
         '\n' + JSON.stringify(response, null, 2),
       );
       response.items!.should.matchEvery(item => item.status?.code === 200);
-    });
+    }, 5000);
 
     it('should have received an order create event', async function() {
-      this.timeout(5000);
       await orderCreatedSemaphore.acquire(1);
-    })
+    }, 5000)
   }
 
   for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
     it(`should read valid orders by sample: ${sample_name}`, async function() {
-      this.timeout(5000);
       const ids = [...new Set(
           sample.items?.map(
             item => item.id
@@ -149,12 +144,11 @@ describe('The Ordering Service:', () => {
         ids.length
       )
       response.items!.should.matchEvery(item => item.status?.code === 200);
-    });
+    }, 5000);
   }
 
   for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
     it(`should update valid orders by sample: ${sample_name}`, async function() {
-      this.timeout(5000);
       const response = await client.update(sample);
       should.equal(
         response.operationStatus?.code,
@@ -162,17 +156,15 @@ describe('The Ordering Service:', () => {
         '\n' + JSON.stringify(response, null, 2),
       );
       response.items!.should.matchEvery(item => item.status?.code === 200);
-    });
+    }, 5000);
 
     it('should have received an order update event', async function() {
-      this.timeout(5000);
       await orderUpdatedSemaphore.acquire(1);
-    })
+    }, 5000);
   }
 
   for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
     it(`should evaluate valid orders by sample: ${sample_name}`, async function() {
-      this.timeout(5000);
       const response = await client.evaluate(sample);
       should.equal(
         response.operationStatus?.code,
@@ -180,12 +172,11 @@ describe('The Ordering Service:', () => {
         '\n' + JSON.stringify(response, null, 2),
       );
       response.items!.should.matchEvery(item => item.status?.code === 200);
-    });
+    }, 5000);
   }
 
   for (let [sample_name, sample] of Object.entries(samples.orders.invalid)) {
     it(`should not evaluate invalid orders by sample: ${sample_name}`, async function() {
-      this.timeout(5000);
       const response = await client.evaluate(sample);
       should.notEqual(
         response.operationStatus?.code,
@@ -193,12 +184,11 @@ describe('The Ordering Service:', () => {
         'response.operationStatus?.code expected NOT to be 200'
       );
       response.items?.should.matchAny(item => item.status?.code !== 200);
-    });
+    }, 5000);
   }
 
   for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
     it(`should submit valid orders by sample: ${sample_name}`, async function() {
-      this.timeout(30000);
       const response = await client.submit(sample);
       should.equal(
         response.operationStatus?.code,
@@ -209,17 +199,15 @@ describe('The Ordering Service:', () => {
       should.exist(response.orders, 'expect orders to exist');
       should.exist(response.fulfillments, 'expect fulfillments to exist');
       should.exist(response.invoices, 'expect invoices to exist');
-    });
+    }, 30_000);
 
     it('should have received an order submit event', async function() {
-      this.timeout(5000);
       await orderSubmittedSemaphore.acquire(1);
-    });
+    }, 5000);
   }
 
   for (let [sample_name, sample] of Object.entries(samples.orders.invalid)) {
     it(`should not submit invalid orders by sample: ${sample_name}`, async function() {
-      this.timeout(5000);
       const response = await client.submit(sample);
       should.notEqual(
         response.operationStatus?.code,
@@ -227,12 +215,11 @@ describe('The Ordering Service:', () => {
         '\n' + JSON.stringify(response, null, 2),
       );
       response.orders?.should.matchAny(item => item.status?.code !== 200);
-    });
+    }, 5000);
   }
 
   for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
     it(`should create a fulfillment request: ${sample_name}`, async function() {
-      this.timeout(5000);
       const query: FulfillmentRequestList = {
         items: sample.items?.map(order => ({
           orderId: order.id,
@@ -249,12 +236,11 @@ describe('The Ordering Service:', () => {
         '\n' + JSON.stringify(response, null, 2),
       );
       response.items!.should.matchEvery(item => item.status?.code === 200);
-    });
+    }, 5000);
   }
 
   for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
     it(`should withdraw orders: ${sample_name}`, async function() {
-      this.timeout(5000);
       const response = await client.withdraw({
         ids: sample.items?.map((item: any) => item.id),
         subject: sample.subject,
@@ -265,12 +251,11 @@ describe('The Ordering Service:', () => {
         '\n' + JSON.stringify(response, null, 2),
       );
       response.items!.should.matchEvery(item => item.status?.code === 200);
-    });
+    }, 5000);
   }
 
   for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
     it(`should cancel orders: ${sample_name}`, async function() {
-      this.timeout(5000);
       const response = await client.cancel({
         ids: sample.items?.map((item: any) => item.id),
         subject: sample.subject,
@@ -281,12 +266,11 @@ describe('The Ordering Service:', () => {
         '\n' + JSON.stringify(response, null, 2),
       );
       response.items!.should.matchEvery(item => item.status?.code === 200);
-    });
+    }, 5000);
   }
 
   for (let [sample_name, sample] of Object.entries(samples.orders.valid)) {
     it(`should delete orders: ${sample_name}`, async function() {
-      this.timeout(5000);
       const response = await client.delete({
         ids: sample.items?.map((item: any) => item.id),
         subject: sample.subject,
@@ -297,6 +281,6 @@ describe('The Ordering Service:', () => {
         '\n' + JSON.stringify(response, null, 2),
       );
       response.status!.should.matchEvery(item => item?.code === 200);
-    });
+    }, 5000);
   }
 });

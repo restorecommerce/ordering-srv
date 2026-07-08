@@ -2670,7 +2670,7 @@ export class OrderingService
                   : order.payload?.items ?? []
               ).map(
                 (item, i): Position => ({
-                  id: randomUUID().replaceAll('-', ''),
+                  id: randomUUID().replace(/-/g, ''),
                   unit_price: item.unit_price,
                   quantity: item.quantity,
                   amount: item.amount ?? throwStatusCode(
@@ -2700,7 +2700,7 @@ export class OrderingService
                 ) : []
               ).map(
                 (a, i): Position => ({
-                  id: randomUUID().replaceAll('-', ''),
+                  id: randomUUID().replace(/-/g, ''),
                   unit_price: a.price,
                   quantity: 1,
                   amount: a.amount ?? throwStatusCode(

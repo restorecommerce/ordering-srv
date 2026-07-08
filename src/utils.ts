@@ -712,12 +712,12 @@ export const createStatusCode = (
 ): Status => ({
   id,
   code: Number.isInteger(status?.code) ? status.code : 500,
-  message: status?.message?.replaceAll(
-    '{details}', details ?? 'undefined'
-  ).replaceAll(
-    '{entity}', entity ?? 'undefined'
-  ).replaceAll(
-    '{id}', entity_id ?? 'undefined'
+  message: status?.message?.replace(
+    /\{details\}/g, details ?? 'undefined'
+  ).replace(
+    /\{entity\}/g, entity ?? 'undefined'
+  ).replace(
+    /\{id\}/g, entity_id ?? 'undefined'
   ) ?? 'Unknown status',
 });
 
@@ -743,10 +743,10 @@ export const createOperationStatusCode = (
   id?: string,
 ): OperationStatus => ({
   code: status?.code ?? 500,
-  message: status?.message?.replaceAll(
-    '{entity}', entity ?? 'undefined'
-  ).replaceAll(
-    '{id}', id ?? 'undefined'
+  message: status?.message?.replace(
+    /\{entity\}/g, entity ?? 'undefined'
+  ).replace(
+    /\{id\}/, id ?? 'undefined'
   ) ?? 'Unknown status',
 });
 
