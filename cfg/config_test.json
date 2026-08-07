@@ -19,7 +19,9 @@
     "kafka": {
       "provider": "kafka",
       "groupId": "restore-ordering-srv-test",
+      "retries": 0,
       "kafka": {
+        "retries": 0,
         "clientId": "restore-ordering-srv-test",
         "brokers": [
           "localhost:29092"

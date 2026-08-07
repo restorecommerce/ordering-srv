@@ -75,10 +75,13 @@ import {
   ManufacturerListResponse
 } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/manufacturer.js';
 import {
+  DeleteRequest,
+  DeleteResponse
+} from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/resource_base.js';
+import {
   getRedisInstance,
   logger
 } from './utils.js';
-import { DeleteRequest, DeleteResponse } from '@restorecommerce/rc-grpc-clients/dist/generated/io/restorecommerce/resource_base.js';
 
 type Address = ShippingAddress & BillingAddress;
 
